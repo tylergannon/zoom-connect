@@ -69,6 +69,7 @@ type config struct {
 	audioCodec    string // l16 | opus
 	audioDataOpt  string // mixed | separate
 	bufferData    bool
+	bridge        *liveBridge
 }
 
 func loadConfig() config {
@@ -81,6 +82,7 @@ func loadConfig() config {
 		audioCodec:    envOr("RTMS_AUDIO_CODEC", "l16"),
 		audioDataOpt:  envOr("RTMS_AUDIO_DATA_OPT", "separate"),
 		bufferData:    envOr("RTMS_BUFFER_DATA", "true") == "true",
+		bridge:        bridgeFromEnv(),
 	}
 	for _, m := range strings.Split(envOr("RTMS_MEDIA", "transcript,chat"), ",") {
 		m = strings.TrimSpace(strings.ToLower(m))
@@ -412,10 +414,12 @@ func (s *stream) runMedia(name, u string) {
 			send(map[string]any{"msg_type": msgKeepAliveResp, "timestamp": msg["timestamp"]})
 		case msgMediaDataTranscript:
 			if c, ok := msg["content"].(map[string]any); ok {
+				s.cfg.bridge.text(s.streamID, "transcript", c)
 				log.Printf("[%s] %v: %v", s.streamID, c["user_name"], c["data"])
 			}
 		case msgMediaDataChat:
 			if c, ok := msg["content"].(map[string]any); ok {
+				s.cfg.bridge.text(s.streamID, "chat", c)
 				log.Printf("[%s] chat %v: %v", s.streamID, c["user_name"], truncate([]byte(fmt.Sprint(c["data"])), 300))
 			}
 		}
@@ -510,6 +514,7 @@ func (sv *server) webhook(w http.ResponseWriter, r *http.Request) {
 		}
 		sv.start(meetingUUID, streamID, serverURL)
 	case "meeting.rtms_stopped", "meeting.rtms_interrupted":
+		sv.cfg.bridge.stop(streamID)
 		sv.mu.Lock()
 		s := sv.streams[streamID]
 		delete(sv.streams, streamID)
@@ -559,6 +564,7 @@ func (sv *server) start(meetingUUID, streamID, serverURL string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &stream{cfg: sv.cfg, meetingUUID: meetingUUID, streamID: streamID, rec: rec, ctx: ctx, cancel: cancel, media: map[string]*websocket.Conn{}}
 	sv.streams[streamID] = s
+	sv.cfg.bridge.start(streamID)
 	go s.runSignaling(serverURL)
 }
 

@@ -343,6 +343,10 @@ func (a *Server) startSimulators() {
 		ids = append(ids, id)
 	}
 	for _, id := range ids {
+		initial := a.h.snapshot(id, 0)
+		if len(initial) > 0 && initial[0].Data["source"] == "zoom" {
+			continue
+		}
 		go a.simulate(id)
 	}
 }

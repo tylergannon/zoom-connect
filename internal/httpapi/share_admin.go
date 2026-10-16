@@ -235,7 +235,8 @@ func (a *Server) createDemoCall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Topic string `json:"topic"`
+		Topic  string `json:"topic"`
+		Source string `json:"source"`
 	}
 	_ = decode(r, &in)
 	if strings.TrimSpace(in.Topic) == "" {
@@ -249,8 +250,12 @@ func (a *Server) createDemoCall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = a.s.Q.AddParticipant(r.Context(), db.AddParticipantParams{CallID: id, ParticipantID: p.User.ID, UserID: pgtype.Text{String: p.User.ID, Valid: true}, Name: p.User.Name, Email: pgtype.Text{String: p.User.Email, Valid: true}})
-	a.emit(r.Context(), id, "stream.started", nil, map[string]any{})
-	go a.simulate(id)
+	a.emit(r.Context(), id, "stream.started", nil, map[string]any{"source": in.Source})
+	// The RTMS recorder uses this existing local-demo API to supply real
+	// meeting events. Never mix scripted transcript lines into those calls.
+	if in.Source != "zoom" {
+		go a.simulate(id)
+	}
 	c, e := a.s.Q.GetCall(r.Context(), id)
 	if e != nil {
 		jsonError(w, 500, "database error")

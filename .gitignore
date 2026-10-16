@@ -2,6 +2,8 @@
 /recordings/
 /rtmsrec
 /data/
+/data-live/
+/ephemeral/bin/
 /bin/
 /web/build/
 /web/.svelte-kit/
