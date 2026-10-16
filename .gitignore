@@ -1,8 +1,13 @@
 /.env
 /recordings/
 /rtmsrec
+<<<<<<< HEAD
 /data/
 /bin/
 /web/build/
 /web/.svelte-kit/
 /web/node_modules/
+||||||| 68ae421
+=======
+.claude/worktrees/
+>>>>>>> origin/main
