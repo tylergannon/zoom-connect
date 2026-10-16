@@ -79,3 +79,17 @@ The standalone RTMS recorder still saves raw protocol diagnostics separately.
 
 After schema/query edits, run `sqlc generate`. `store.Open` applies the
 idempotent SQL files under `internal/store/migrations` in filename order.
+
+## Single-account demo login
+
+For a hosted demo, set `AUTH_MODE=password`, `DEMO_LOGIN_EMAIL`,
+`DEMO_LOGIN_NAME`, and a generated `DEMO_LOGIN_PASSWORD` of at least 20
+characters. Password mode creates that account, disables simulated login and
+persona enumeration, and skips fictional demo data. `PUBLIC_URL=https://...`
+requires password mode and makes session cookies Secure behind the proxy.
+Google Workspace OAuth is still pending. Keep all credentials in the
+`zoom-connect` Doppler project's `prd` config.
+
+Hosted Postgres uses a verified TLS URL. Set `DATABASE_CA_CERT` to its PEM
+root certificate when the provider uses its own CA. The application adds that
+CA to its database TLS trust pool without changing system-wide trust.

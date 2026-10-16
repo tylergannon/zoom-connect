@@ -6,7 +6,10 @@ and serve them to the company's people (web UI, Google sign-in restricted to
 one Google Apps domain) and to their agents (API keys, SSE, downloads).
 
 The current implementation combines the local POC UI (simulated Google
-sign-in and seeded demo calls) with a tested live Zoom RTMS recorder bridge.
+sign-in and seeded demo calls in local mode) with a tested live Zoom RTMS recorder bridge.
+Public demo deployments use AUTH_MODE=password and a single configured
+account; simulated sign-in and persona enumeration are disabled in this mode.
+Google Workspace OAuth remains pending.
 Postgres stores each normalized meeting event as a separate ordered row,
 alongside API keys, sharing, access checks, and the call index. Existing JSONL
 archives are imported once at startup; normalized events no longer depend on

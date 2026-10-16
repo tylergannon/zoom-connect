@@ -22,6 +22,13 @@ Once imported, replay and downloads must work without the original files.
 Raw recorder diagnostics remain separate from the application's durable event
 store. Audio/video storage and hosting are later decisions.
 
+For the temporary public demo, Tyler authorized a password login restricted
+to tyler@tylergannon.com, with credentials in Doppler zoom-connect/prd. This
+mode disables simulated sign-in and seeded fictional data. Real Google
+Workspace authentication remains future work. Supabase Free is the hosted
+event store; Fly deployment is being prepared separately. Historical local
+call data is deliberately not copied, per Tyler.
+
 This amendment supersedes the event-related R2/archive requirements below for
 the current prototype. The remaining draft describes future integrations;
 Google auth and fully integrated production RTMS are not completed by this

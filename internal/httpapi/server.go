@@ -28,6 +28,7 @@ type Server struct {
 	h          *hub
 	domain     string
 	zoomSecret string
+	login      *passwordLogin
 }
 
 func New(next http.Handler) (http.Handler, error) {
@@ -48,6 +49,10 @@ func New(next http.Handler) (http.Handler, error) {
 		s.Close()
 		return nil, err
 	}
+	if err = a.configureLogin(ctx); err != nil {
+		s.Close()
+		return nil, err
+	}
 	a.startSimulators()
 	mux := http.NewServeMux()
 	a.routes(mux)
@@ -64,6 +69,8 @@ func env(k, d string) string {
 func (a *Server) routes(m *http.ServeMux) {
 	pub := func(pattern string, h http.HandlerFunc) { m.HandleFunc(pattern, h) }
 	priv := func(pattern string, h http.HandlerFunc) { m.Handle(pattern, a.auth(http.HandlerFunc(h))) }
+	pub("GET /api/auth/options", a.authOptions)
+	pub("POST /api/login", a.passwordSignIn)
 	pub("GET /api/demo/users", a.demoUsers)
 	pub("POST /api/demo/login", a.demoLogin)
 	priv("GET /api/me", a.me)
@@ -176,6 +183,10 @@ func decode(r *http.Request, v any) error {
 	return json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(v)
 }
 func (a *Server) demoUsers(w http.ResponseWriter, r *http.Request) {
+	if a.login != nil {
+		jsonError(w, 404, "not found")
+		return
+	}
 	us, e := a.s.Q.ListUsers(r.Context())
 	if e != nil {
 		jsonError(w, 500, "database error")
@@ -188,6 +199,10 @@ func (a *Server) demoUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, out)
 }
 func (a *Server) demoLogin(w http.ResponseWriter, r *http.Request) {
+	if a.login != nil {
+		jsonError(w, 404, "not found")
+		return
+	}
 	var in struct {
 		Email string `json:"email"`
 	}
@@ -200,11 +215,9 @@ func (a *Server) demoLogin(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 403, "unknown demo user")
 		return
 	}
-	id := randomSecret(32)
-	_ = a.s.Q.CreateSession(r.Context(), db.CreateSessionParams{ID: id, UserID: u.ID, ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true}})
-	http.SetCookie(w, &http.Cookie{Name: "zc_session", Value: id, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil, Expires: time.Now().Add(24 * time.Hour)})
-	writeJSON(w, 200, user(u))
+	a.createLoginSession(w, r, user(u))
 }
+
 func (a *Server) me(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, principal(r).User) }
 func (a *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if c, e := r.Cookie("zc_session"); e == nil {
@@ -215,6 +228,9 @@ func (a *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Server) seed(ctx context.Context) error {
+	if os.Getenv("AUTH_MODE") == "password" {
+		return nil
+	}
 	admins := map[string]bool{}
 	for _, email := range strings.Split(env("ADMIN_EMAILS", "dana@acme.co,marcus@acme.co"), ",") {
 		admins[strings.ToLower(strings.TrimSpace(email))] = true

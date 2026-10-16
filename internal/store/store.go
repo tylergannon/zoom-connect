@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"crypto/x509"
 	"embed"
 	"fmt"
+	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tylergannon/zoom-connect/internal/store/db"
@@ -18,7 +20,21 @@ type Store struct {
 }
 
 func Open(ctx context.Context, dsn string) (*Store, error) {
-	p, err := pgxpool.New(ctx, dsn)
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if pem := os.Getenv("DATABASE_CA_CERT"); pem != "" && cfg.ConnConfig.TLSConfig != nil {
+		roots, err := x509.SystemCertPool()
+		if err != nil {
+			roots = x509.NewCertPool()
+		}
+		if !roots.AppendCertsFromPEM([]byte(pem)) {
+			return nil, fmt.Errorf("DATABASE_CA_CERT contains no valid certificates")
+		}
+		cfg.ConnConfig.TLSConfig.RootCAs = roots
+	}
+	p, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
