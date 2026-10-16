@@ -12,7 +12,15 @@ Status: in progress. The standalone recorder builds and its package tests pass. 
 
 In Safari, open https://marketplace.zoom.us/user/build. The existing session is signed in. On first entry, Zoom presents its Marketplace Terms of Use. The user must approve acceptance before the agent clicks **Agree**.
 
+Completed: the user explicitly approved, **Agree** was clicked, and the signed-in **Created apps** dashboard appeared with no apps.
+
 ![Marketplace Terms of Use](screenshots/01-marketplace-terms.png)
+
+## 2. Start app creation
+
+Click the **Add** button beside **Developer**, then **Build app**. On this account, Zoom presents a second, separate **API License and Terms of Use** agreement before the app-type form. Acceptance is pending user approval.
+
+![API License and Terms of Use](screenshots/02-api-license-terms.png)
 
 ## Remaining steps
 
