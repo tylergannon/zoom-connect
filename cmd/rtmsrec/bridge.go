@@ -1,7 +1,7 @@
 package main
 
 // Optional demo bridge: forward actual RTMS text into the existing web app.
-// Authentication in that app remains the explicitly simulated POC sign-in.
+// Calls are attributed to the owner of the configured web application API key.
 import (
 	"bytes"
 	"encoding/json"

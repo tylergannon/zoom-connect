@@ -1,0 +1,18 @@
+{
+  "public_url": "https://zoom-connect-tpg-demo.fly.dev",
+  "public_health": true,
+  "anonymous_calls_rejected": true,
+  "simulated_login_disabled": true,
+  "wrong_password_rejected": true,
+  "configured_account_login_verified": true,
+  "https_session_verified": true,
+  "fresh_database_no_history_copied": true,
+  "recorder_webhook_validation_verified": true,
+  "doppler_token_access": "read",
+  "doppler_token_ttl_hours": 24,
+  "separate_zoom_app_id": "LIt3ti3IQ-KbHXMIhz4x3A",
+  "production_zoom_credentials_loaded": true,
+  "production_zoom_webhook_validation_verified": true,
+  "production_zoom_installation": "awaiting_user_approval",
+  "live_zoom_transcript_on_fly_verified": false
+}

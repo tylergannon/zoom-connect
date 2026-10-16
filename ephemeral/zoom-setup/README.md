@@ -1,6 +1,6 @@
 # Zoom RTMS setup record
 
-Status: real Zoom transcript capture demonstrated on October 16, 2026. A meeting hosted from the user's other computer sent actual speech through Zoom RTMS, the temporary tunnel, and the recorder into the web application's live call view. Google sign-in and the viewer identity remain the prototype's simulated demo accounts.
+Status: real Zoom transcript capture demonstrated on October 16, 2026. A meeting hosted from the user's other computer sent actual speech through Zoom RTMS, the temporary tunnel, and the recorder into the web application's live call view. The local prototype originally used simulated viewer accounts. The Fly deployment below uses a real password session limited to the configured Tyler account; Google OAuth remains pending.
 
 ## Demo scope and later promise
 
@@ -138,3 +138,85 @@ advancing sequence, a fresh server replay, Last-Event-ID resume, transcript
 download, and atomic/idempotent import with the original file removed. Go tests
 and the frontend check passed. Current live subscriptions require one app
 instance; multi-instance fanout is not implemented.
+
+
+## 8. Supabase, Doppler and Fly deployment
+
+Public application: https://zoom-connect-tpg-demo.fly.dev/
+
+Sign in as `tyler@tylergannon.com` using `DEMO_LOGIN_PASSWORD` in Doppler
+`zoom-connect / prd`. The deployed app disables the simulated persona routes.
+The hosted database starts empty: Tyler explicitly declined copying old calls.
+
+Supabase Free project `zoom-connect-demo` (`yalpdecithndviofygkz`) belongs to
+Diffusion-TPG in us-east-1. Data API is disabled. The application uses the
+session pooler at `aws-0-us-east-1.pooler.supabase.com:5432`, database `postgres`,
+user `postgres.yalpdecithndviofygkz`. Build the URL with a percent-encoded
+password and `sslmode=verify-full`; store the official Supabase root PEM as
+`DATABASE_CA_CERT`. `DATABASE_URL` references `SUPABASE_DATABASE_URL` in Doppler.
+Keep the database password only in Doppler.
+
+All runtime secrets are in the existing Doppler config, including the configured
+login, recorder API key, database connection and Zoom credentials. Fly holds only
+a read-only Doppler service token scoped to this config. The temporary token
+`fly-text-demo` expires 24 hours after creation on October 16: replace it before
+restarting after that expiry if the demo is retained. The running processes keep
+their loaded configuration until restart.
+
+```sh
+ORIGIN=https://zoom-connect-tpg-demo.fly.dev ./deploy/build.sh
+docker build --platform linux/amd64 -t zoom-connect-tpg-demo:local .
+fly deploy --local-only --ha=false --yes --config fly.toml
+```
+
+The Docker build context permits only the prebuilt Linux binaries and startup
+script. The container runs the Go app on port 8080 and recorder on loopback 8081.
+`/zoom/webhook` proxies to the recorder with the signed request unchanged.
+`/healthz` checks Postgres and recorder availability. Either process exiting
+stops its companion so Fly restarts the pair. Normalized events remain in
+Postgres; raw recorder protocol diagnostics are ephemeral container files.
+One Fly machine is intentional because live SSE fanout is currently in-process.
+
+Verified: deployed HTTPS login and session, rejection of anonymous access and
+wrong passwords, disabled simulated login, fresh hosted database, and signed
+webhook endpoint validation. See [Fly proof](fly-proof.json).
+
+![Signed into deployed app](13-fly-signed-in.png)
+
+## 9. Separate production Zoom registration
+
+The original Zoom Connect Demo app and quick-tunnel URLs remain unchanged.
+Created a second user-managed General App named **Zoom Connect Production**,
+app ID `LIt3ti3IQ-KbHXMIhz4x3A`. This is a separate development registration
+for this account's hosted demo; it is not a publicly reviewed Marketplace release.
+
+Repeat sections 3 and 5 on this registration, using:
+
+- OAuth redirect and allow list: `https://zoom-connect-tpg-demo.fly.dev/healthz`.
+- Webhook subscription **Zoom Connect Fly**:
+  `https://zoom-connect-tpg-demo.fly.dev/zoom/webhook`.
+- The same three meeting RTMS lifecycle events and transcript/chat scopes,
+  with Zoom's required audio dependency.
+- Meetings surface and startup recommendations for owned/external meetings.
+
+Copy this registration's Client ID, Client Secret and Secret Token into Doppler
+`prd` only. Preserve local `.env` values. Restart Fly to reload Doppler:
+
+```sh
+fly machine restart 8d99909f12d0d8 --app zoom-connect-tpg-demo
+```
+
+The restarted Fly endpoint validated this new app's HMAC challenge successfully.
+Installation is currently awaiting Tyler's action-time approval at **Allow**.
+After installation, verify **Remove App**, then start a meeting on the same Zoom
+account, approve content sharing and speak. Verify actual speech in the hosted
+call view before claiming end-to-end production capture. Local success alone is
+not evidence that the deployed stream works.
+
+![Separate hosted Zoom app](14-production-app-created.png)
+![Production authorization](15-production-authorization.png)
+
+For teardown, remove the production Zoom app from the account, revoke its
+Doppler service token, and destroy the Fly app when Tyler requests removal.
+Supabase/Doppler deletion is separate; preserve anything still needed by the
+media and scheduling tasks. No teardown was performed in this setup.

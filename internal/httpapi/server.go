@@ -24,11 +24,13 @@ import (
 )
 
 type Server struct {
-	s          *store.Store
-	h          *hub
-	domain     string
-	zoomSecret string
-	login      *passwordLogin
+	s              *store.Store
+	h              *hub
+	domain         string
+	zoomSecret     string
+	login          *passwordLogin
+	recorder       http.Handler
+	recorderHealth string
 }
 
 func New(next http.Handler) (http.Handler, error) {
@@ -53,6 +55,10 @@ func New(next http.Handler) (http.Handler, error) {
 		s.Close()
 		return nil, err
 	}
+	if err = a.configureRecorder(); err != nil {
+		s.Close()
+		return nil, err
+	}
 	a.startSimulators()
 	mux := http.NewServeMux()
 	a.routes(mux)
@@ -69,6 +75,7 @@ func env(k, d string) string {
 func (a *Server) routes(m *http.ServeMux) {
 	pub := func(pattern string, h http.HandlerFunc) { m.HandleFunc(pattern, h) }
 	priv := func(pattern string, h http.HandlerFunc) { m.Handle(pattern, a.auth(http.HandlerFunc(h))) }
+	pub("GET /healthz", a.health)
 	pub("GET /api/auth/options", a.authOptions)
 	pub("POST /api/login", a.passwordSignIn)
 	pub("GET /api/demo/users", a.demoUsers)
@@ -92,7 +99,11 @@ func (a *Server) routes(m *http.ServeMux) {
 	priv("POST /api/demo/calls", a.createDemoCall)
 	priv("POST /api/demo/calls/{id}/events", a.addDemoEvent)
 	priv("POST /api/demo/calls/{id}/stop", a.stopDemoCall)
-	pub("POST /zoom/webhook", a.zoomWebhook)
+	if a.recorder != nil {
+		m.Handle("POST /zoom/webhook", a.recorder)
+	} else {
+		pub("POST /zoom/webhook", a.zoomWebhook)
+	}
 	// The agent guide uses /api/v1; keep the same access and representation rules.
 	priv("GET /api/v1/calls", a.calls)
 	priv("GET /api/v1/calls/{id}", a.call)

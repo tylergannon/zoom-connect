@@ -1,0 +1,75 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 551B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/dopplerhq/cli:3
+#2 DONE 1.3s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 181B done
+#3 DONE 0.0s
+
+#4 [1/7] FROM docker.io/dopplerhq/cli:3@sha256:bc59e0e97ea596a2c402f108043b9fd6ad574db253998364de939c0ca373453e
+#4 resolve docker.io/dopplerhq/cli:3@sha256:bc59e0e97ea596a2c402f108043b9fd6ad574db253998364de939c0ca373453e done
+#4 sha256:5eee1dc666991d7a3ad2d06e2fa881a11e23efaa2c423813d18755dc74f36417 0B / 4.95MB 0.2s
+#4 sha256:440e1026cbabdb5f6fac02b4117662c7435bb9fa5cd82c0a9511a509ec77d701 0B / 17.98kB 0.2s
+#4 sha256:681755e1ebb7199c6651a35b5b2ea0c7185bb20daf75bd82c03385165d2de08a 0B / 5.53MB 0.2s
+#4 sha256:e2de96513ba9eb53b431787ec8a65cdde380ac4772a3e4c4b714dcfde2a102b5 0B / 3.85MB 0.2s
+#4 ...
+
+#5 [internal] load build context
+#5 transferring context: 43.59MB 0.3s done
+#5 DONE 0.3s
+
+#4 [1/7] FROM docker.io/dopplerhq/cli:3@sha256:bc59e0e97ea596a2c402f108043b9fd6ad574db253998364de939c0ca373453e
+#4 sha256:440e1026cbabdb5f6fac02b4117662c7435bb9fa5cd82c0a9511a509ec77d701 17.98kB / 17.98kB 0.4s done
+#4 sha256:5eee1dc666991d7a3ad2d06e2fa881a11e23efaa2c423813d18755dc74f36417 4.19MB / 4.95MB 0.6s
+#4 sha256:5eee1dc666991d7a3ad2d06e2fa881a11e23efaa2c423813d18755dc74f36417 4.95MB / 4.95MB 0.7s done
+#4 sha256:e2de96513ba9eb53b431787ec8a65cdde380ac4772a3e4c4b714dcfde2a102b5 3.85MB / 3.85MB 0.7s done
+#4 extracting sha256:e2de96513ba9eb53b431787ec8a65cdde380ac4772a3e4c4b714dcfde2a102b5 0.1s done
+#4 sha256:681755e1ebb7199c6651a35b5b2ea0c7185bb20daf75bd82c03385165d2de08a 1.05MB / 5.53MB 0.8s
+#4 extracting sha256:440e1026cbabdb5f6fac02b4117662c7435bb9fa5cd82c0a9511a509ec77d701 done
+#4 sha256:681755e1ebb7199c6651a35b5b2ea0c7185bb20daf75bd82c03385165d2de08a 5.53MB / 5.53MB 0.9s
+#4 sha256:681755e1ebb7199c6651a35b5b2ea0c7185bb20daf75bd82c03385165d2de08a 5.53MB / 5.53MB 0.9s done
+#4 extracting sha256:681755e1ebb7199c6651a35b5b2ea0c7185bb20daf75bd82c03385165d2de08a 0.0s done
+#4 extracting sha256:5eee1dc666991d7a3ad2d06e2fa881a11e23efaa2c423813d18755dc74f36417 0.0s done
+#4 DONE 1.0s
+
+#6 [2/7] RUN apk add --no-cache bash ca-certificates && adduser -D -u 10001 app
+#6 1.526 (1/5) Installing ncurses-terminfo-base (6.6_p20260516-r0)
+#6 1.578 (2/5) Installing libncursesw (6.6_p20260516-r0)
+#6 1.650 (3/5) Installing readline (8.3.3-r1)
+#6 1.716 (4/5) Installing bash (5.3.9-r1)
+#6 1.865   Executing bash-5.3.9-r1.post-install
+#6 1.880 (5/5) Installing ca-certificates (20260909-r0)
+#6 1.967 Executing busybox-1.37.0-r31.trigger
+#6 1.981 Executing ca-certificates-20260909-r0.trigger
+#6 2.044 OK: 10.3 MiB in 22 packages
+#6 DONE 2.3s
+
+#7 [3/7] WORKDIR /app
+#7 DONE 0.0s
+
+#8 [4/7] COPY ephemeral/bin/zoom-connect-linux /app/zoom-connect
+#8 DONE 0.1s
+
+#9 [5/7] COPY ephemeral/bin/rtmsrec-linux /app/rtmsrec
+#9 DONE 0.0s
+
+#10 [6/7] COPY deploy/run-services.sh /app/run-services.sh
+#10 DONE 0.0s
+
+#11 [7/7] RUN mkdir -p /app/recordings && chown -R app:app /app
+#11 DONE 0.2s
+
+#12 exporting to image
+#12 exporting layers
+#12 exporting layers 1.0s done
+#12 exporting manifest sha256:494f960be9d154fc8b42b09e504aa98a5806d8ba27d4095f421752c5bc0fd732 done
+#12 exporting config sha256:119216f3e68f9374b49228dcb2a83a5efb0c9a1a0accdee299ccc49c40bab22a done
+#12 exporting attestation manifest sha256:bc5bdb0b3989c199af4aea45662fc7dcaf048cf90a4d0fb34274e1cd0c47fde8 done
+#12 exporting manifest list sha256:c6c4197f40d3477d888e0edb36d38076451d12b01a2e88e4ecc2dc7c35ca90f9 done
+#12 naming to docker.io/library/zoom-connect-tpg-demo:local done
+#12 DONE 1.0s

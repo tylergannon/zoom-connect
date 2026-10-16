@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!deploy/
+!deploy/run-services.sh
+!ephemeral/
+!ephemeral/bin/
+!ephemeral/bin/zoom-connect-linux
+!ephemeral/bin/rtmsrec-linux

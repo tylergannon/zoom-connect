@@ -1,0 +1,210 @@
+==> Verifying app config
+Validating fly.toml
+[32m✓[0m Configuration is valid
+--> Verified app config
+==> Building image
+==> Building image with Docker
+--> docker host: 29.6.2 linux aarch64
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 551B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/dopplerhq/cli:3
+#2 DONE 0.5s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 181B done
+#3 DONE 0.0s
+
+#4 [1/7] FROM docker.io/dopplerhq/cli:3@sha256:bc59e0e97ea596a2c402f108043b9fd6ad574db253998364de939c0ca373453e
+#4 resolve docker.io/dopplerhq/cli:3@sha256:bc59e0e97ea596a2c402f108043b9fd6ad574db253998364de939c0ca373453e done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 43.59MB 0.3s done
+#5 DONE 0.3s
+
+#6 [2/7] RUN apk add --no-cache bash ca-certificates && adduser -D -u 10001 app
+#6 CACHED
+
+#7 [3/7] WORKDIR /app
+#7 CACHED
+
+#8 [4/7] COPY ephemeral/bin/zoom-connect-linux /app/zoom-connect
+#8 CACHED
+
+#9 [5/7] COPY ephemeral/bin/rtmsrec-linux /app/rtmsrec
+#9 CACHED
+
+#10 [6/7] COPY deploy/run-services.sh /app/run-services.sh
+#10 CACHED
+
+#11 [7/7] RUN mkdir -p /app/recordings && chown -R app:app /app
+#11 CACHED
+
+#12 exporting to image
+#12 exporting layers done
+#12 exporting manifest sha256:494f960be9d154fc8b42b09e504aa98a5806d8ba27d4095f421752c5bc0fd732 done
+#12 exporting config sha256:119216f3e68f9374b49228dcb2a83a5efb0c9a1a0accdee299ccc49c40bab22a done
+#12 naming to registry.fly.io/zoom-connect-tpg-demo:deployment-01M534ZJ4CH4NNN8KZT28C1R5B done
+#12 DONE 0.0s
+[38;5;252m--> Building image done[0m
+==> Pushing image to fly
+The push refers to repository [registry.fly.io/zoom-connect-tpg-demo]
+32eeda662724: Waiting
+5eee1dc66699: Waiting
+280770bbb987: Waiting
+440e1026cbab: Waiting
+57c13aa23227: Waiting
+00a61e470cd9: Waiting
+d6635cea2d39: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+440e1026cbab: Waiting
+57c13aa23227: Waiting
+00a61e470cd9: Waiting
+d6635cea2d39: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+32eeda662724: Waiting
+5eee1dc66699: Waiting
+280770bbb987: Waiting
+280770bbb987: Waiting
+440e1026cbab: Waiting
+57c13aa23227: Waiting
+00a61e470cd9: Waiting
+d6635cea2d39: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+32eeda662724: Waiting
+5eee1dc66699: Waiting
+32eeda662724: Waiting
+5eee1dc66699: Waiting
+280770bbb987: Waiting
+440e1026cbab: Waiting
+57c13aa23227: Waiting
+00a61e470cd9: Waiting
+d6635cea2d39: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+32eeda662724: Waiting
+5eee1dc66699: Waiting
+280770bbb987: Waiting
+440e1026cbab: Waiting
+57c13aa23227: Waiting
+00a61e470cd9: Waiting
+d6635cea2d39: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+5eee1dc66699: Waiting
+280770bbb987: Waiting
+440e1026cbab: Waiting
+57c13aa23227: Waiting
+00a61e470cd9: Waiting
+d6635cea2d39: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+32eeda662724: Waiting
+280770bbb987: Waiting
+440e1026cbab: Waiting
+57c13aa23227: Waiting
+00a61e470cd9: Waiting
+d6635cea2d39: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+32eeda662724: Waiting
+5eee1dc66699: Waiting
+32eeda662724: Waiting
+5eee1dc66699: Waiting
+280770bbb987: Waiting
+440e1026cbab: Waiting
+57c13aa23227: Waiting
+00a61e470cd9: Waiting
+d6635cea2d39: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+5eee1dc66699: Waiting
+280770bbb987: Waiting
+440e1026cbab: Waiting
+57c13aa23227: Waiting
+00a61e470cd9: Waiting
+d6635cea2d39: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+32eeda662724: Waiting
+5eee1dc66699: Waiting
+280770bbb987: Waiting
+440e1026cbab: Waiting
+57c13aa23227: Waiting
+00a61e470cd9: Waiting
+d6635cea2d39: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+32eeda662724: Waiting
+a78f49f1371f: Waiting
+32eeda662724: Waiting
+5eee1dc66699: Waiting
+280770bbb987: Waiting
+440e1026cbab: Waiting
+57c13aa23227: Waiting
+00a61e470cd9: Waiting
+d6635cea2d39: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+32eeda662724: Waiting
+5eee1dc66699: Waiting
+280770bbb987: Waiting
+00a61e470cd9: Waiting
+e2de96513ba9: Waiting
+681755e1ebb7: Waiting
+681755e1ebb7: Waiting
+a78f49f1371f: Waiting
+32eeda662724: Waiting
+a78f49f1371f: Waiting
+a78f49f1371f: Waiting
+d6635cea2d39: Pushed
+440e1026cbab: Pushed
+57c13aa23227: Pushed
+280770bbb987: Pushed
+e2de96513ba9: Pushed
+681755e1ebb7: Pushed
+5eee1dc66699: Pushed
+a78f49f1371f: Pushed
+00a61e470cd9: Pushed
+32eeda662724: Pushed
+deployment-01M534ZJ4CH4NNN8KZT28C1R5B: digest: sha256:494f960be9d154fc8b42b09e504aa98a5806d8ba27d4095f421752c5bc0fd732 size: 2200
+--> Pushing image done
+image: registry.fly.io/zoom-connect-tpg-demo:deployment-01M534ZJ4CH4NNN8KZT28C1R5B
+image size: 60 MB
+
+Watch your deployment at https://fly.io/apps/zoom-connect-tpg-demo/monitoring
+
+Provisioning ips for zoom-connect-tpg-demo
+  Dedicated ipv6: 2a09:8280:1::1ba:57dc:0
+  Shared ipv4: 66.241.124.154
+  Add a dedicated ipv4 with: fly ips allocate-v4
+
+This deployment will:
+ * create 1 "app" machine
+
+> Launching new machine
+No machines in group app, launching a new machine
+> Machine 8d99909f12d0d8 [app] was created
+✔ Machine 8d99909f12d0d8 [app] update finished: success
+Finished launching new machines
+Checking DNS configuration for zoom-connect-tpg-demo.fly.dev
+✓ DNS configuration verified
+
+Visit your newly deployed app at https://zoom-connect-tpg-demo.fly.dev/
+
