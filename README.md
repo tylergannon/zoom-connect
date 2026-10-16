@@ -59,3 +59,23 @@ The resulting binary embeds the frontend build and serves it without Node.
 For a full local app run, start Postgres first with `docker compose up -d
 postgres`. From `web/`, `vp run preview` runs `just serve` and previews that
 same Go binary.
+
+## Meeting event storage
+
+Postgres stores one row per transcript, chat, or lifecycle event in
+`call_events`, keyed by `(call_id, seq)`. Events commit before live SSE
+publication; replay and downloads read directly from Postgres. There is no
+whole-call document to rewrite and no event-history cache to reconstruct.
+The current live fanout supports one application instance.
+
+On first startup after upgrading, existing `calls.event_path` JSONL archives
+are imported transactionally per call. The importer preserves sequence,
+speaker, timestamps, and payloads, then clears the legacy path in Postgres.
+It leaves the original files intact as backups. An incomplete or conflicting
+archive fails startup with a diagnostic; correct it before retrying. Stop the
+old application before upgrading so it cannot append to a file during import.
+After import, the application no longer needs those files or `ARCHIVE_DIR`.
+The standalone RTMS recorder still saves raw protocol diagnostics separately.
+
+After schema/query edits, run `sqlc generate`. `store.Open` applies the
+idempotent SQL files under `internal/store/migrations` in filename order.

@@ -89,3 +89,21 @@ INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET val
 
 -- name: GetSetting :one
 SELECT value FROM settings WHERE key=$1;
+
+-- name: ReserveEventSeq :one
+UPDATE calls SET last_seq=last_seq+1 WHERE id=$1 RETURNING last_seq;
+
+-- name: InsertCallEvent :exec
+INSERT INTO call_events(call_id,seq,ts,recv,kind,participant,data) VALUES($1,$2,$3,$4,$5,$6,$7);
+
+-- name: ListCallEvents :many
+SELECT seq,ts,recv,kind,participant,data FROM call_events WHERE call_id=$1 AND seq>$2 ORDER BY seq;
+
+-- name: LatestTranscript :one
+SELECT seq,ts,recv,kind,participant,data FROM call_events WHERE call_id=$1 AND kind='transcript' ORDER BY seq DESC LIMIT 1;
+
+-- name: AdvanceEventSeq :exec
+UPDATE calls SET last_seq=GREATEST(last_seq,$2) WHERE id=$1;
+
+-- name: ListLegacyArchives :many
+SELECT id,event_path FROM calls WHERE event_path<>'';

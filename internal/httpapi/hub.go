@@ -3,89 +3,128 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/tylergannon/zoom-connect/internal/store"
+	"github.com/tylergannon/zoom-connect/internal/store/db"
 )
 
+// Postgres owns history; the hub only owns this instance's live subscriptions.
+// The mutex spans commit and fanout, and replay and registration, so subscribers
+// cannot miss a commit between catching up and following live.
 type hub struct {
-	mu     sync.Mutex
-	events map[string][]Event
-	subs   map[string]map[chan Event]bool
-	root   string
+	mu   sync.Mutex
+	subs map[string]map[chan Event]bool
+	s    *store.Store
 }
 
-func newHub(root string) *hub {
-	return &hub{events: map[string][]Event{}, subs: map[string]map[chan Event]bool{}, root: root}
+func newHub(s *store.Store) *hub {
+	return &hub{subs: map[string]map[chan Event]bool{}, s: s}
 }
-func (h *hub) load(id, path string) {
-	f, e := os.Open(path)
-	if e != nil {
-		return
-	}
-	defer f.Close()
-	dec := json.NewDecoder(f)
-	var es []Event
-	for {
-		var ev Event
-		if dec.Decode(&ev) != nil {
-			break
+func decodeEvent(seq, ts, recv int64, kind string, participant, data []byte) (Event, error) {
+	e := Event{Seq: seq, TS: ts, Recv: recv, Kind: kind}
+	if len(participant) > 0 {
+		if err := json.Unmarshal(participant, &e.Participant); err != nil {
+			return e, err
 		}
-		es = append(es, ev)
 	}
-	h.mu.Lock()
-	h.events[id] = es
-	h.mu.Unlock()
+	err := json.Unmarshal(data, &e.Data)
+	return e, err
 }
-func (h *hub) snapshot(id string, from int64) []Event {
+func (h *hub) snapshot(ctx context.Context, id string, from int64) ([]Event, error) {
+	rows, err := h.s.Q.ListCallEvents(ctx, db.ListCallEventsParams{CallID: id, Seq: from})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Event, 0, len(rows))
+	for _, r := range rows {
+		e, err := decodeEvent(r.Seq, r.Ts, r.Recv, r.Kind, r.Participant, r.Data)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+func (h *hub) replaySubscribe(ctx context.Context, id string, from int64) ([]Event, chan Event, func(), error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	out := make([]Event, 0)
-	for _, e := range h.events[id] {
-		if e.Seq > from {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-func (h *hub) replaySubscribe(id string, from int64) ([]Event, chan Event, func()) {
-	h.mu.Lock()
-	out := make([]Event, 0)
-	for _, e := range h.events[id] {
-		if e.Seq > from {
-			out = append(out, e)
-		}
+	out, err := h.snapshot(ctx, id, from)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	c := make(chan Event, 256)
 	if h.subs[id] == nil {
 		h.subs[id] = map[chan Event]bool{}
 	}
 	h.subs[id][c] = true
-	h.mu.Unlock()
 	return out, c, func() {
 		h.mu.Lock()
+		defer h.mu.Unlock()
 		if h.subs[id][c] {
 			delete(h.subs[id], c)
 			close(c)
 		}
-		h.mu.Unlock()
-	}
+		if len(h.subs[id]) == 0 {
+			delete(h.subs, id)
+		}
+	}, nil
 }
-func (h *hub) subscribe(id string) (chan Event, func()) {
-	_, c, done := h.replaySubscribe(id, 1<<62)
-	return c, done
-}
-func (h *hub) append(ctx context.Context, id string, ev Event) {
-	b, _ := json.Marshal(ev)
-	_ = os.MkdirAll(filepath.Join(h.root, "calls"), 0700)
-	f, e := os.OpenFile(filepath.Join(h.root, "calls", id+".jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-	if e == nil {
-		_, _ = f.Write(append(b, '\n'))
-		_ = f.Close()
+func eventParams(id string, ev Event) (db.InsertCallEventParams, error) {
+	p, err := json.Marshal(ev.Participant)
+	if err != nil {
+		return db.InsertCallEventParams{}, err
 	}
+	d, err := json.Marshal(ev.Data)
+	return db.InsertCallEventParams{CallID: id, Seq: ev.Seq, Ts: ev.TS, Recv: ev.Recv, Kind: ev.Kind, Participant: p, Data: d}, err
+}
+
+// append preserves sequence and timestamps when seeding historical events.
+func (h *hub) append(ctx context.Context, id string, ev Event) error {
+	_, err := h.persist(ctx, id, ev, false)
+	return err
+}
+func (h *hub) appendNext(ctx context.Context, id, kind string, p *Person, data map[string]any) (Event, error) {
+	now := time.Now().UTC().UnixMilli()
+	return h.persist(ctx, id, Event{TS: now, Recv: now, Kind: kind, Participant: p, Data: data}, true)
+}
+func (h *hub) persist(ctx context.Context, id string, ev Event, next bool) (Event, error) {
 	h.mu.Lock()
-	h.events[id] = append(h.events[id], ev)
+	defer h.mu.Unlock()
+	tx, err := h.s.Pool.Begin(ctx)
+	if err != nil {
+		return Event{}, err
+	}
+	defer tx.Rollback(context.Background())
+	q := h.s.Q.WithTx(tx)
+	if next {
+		ev.Seq, err = q.ReserveEventSeq(ctx, id)
+	} else {
+		err = q.AdvanceEventSeq(ctx, db.AdvanceEventSeqParams{ID: id, LastSeq: ev.Seq})
+	}
+	if err != nil {
+		return Event{}, err
+	}
+	params, err := eventParams(id, ev)
+	if err != nil {
+		return Event{}, err
+	}
+	if err = q.InsertCallEvent(ctx, params); err != nil {
+		return Event{}, err
+	}
+	if ev.Kind == "stream.stopped" || ev.Kind == "stream.interrupted" {
+		status := "stopped"
+		if ev.Kind == "stream.interrupted" {
+			status = "interrupted"
+		}
+		if err = q.StopCall(ctx, db.StopCallParams{ID: id, Status: status}); err != nil {
+			return Event{}, err
+		}
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Event{}, err
+	}
 	for c := range h.subs[id] {
 		select {
 		case c <- ev:
@@ -94,29 +133,6 @@ func (h *hub) append(ctx context.Context, id string, ev Event) {
 			close(c)
 		}
 	}
-	h.mu.Unlock()
-}
-func (h *hub) appendNext(id, kind string, p *Person, data map[string]any) Event {
-	now := time.Now().UTC()
-	h.mu.Lock()
-	ev := Event{Seq: int64(len(h.events[id]) + 1), TS: now.UnixMilli(), Recv: now.UnixMilli(), Kind: kind, Participant: p, Data: data}
-	b, _ := json.Marshal(ev)
-	_ = os.MkdirAll(filepath.Join(h.root, "calls"), 0700)
-	f, err := os.OpenFile(filepath.Join(h.root, "calls", id+".jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-	if err == nil {
-		_, _ = f.Write(append(b, '\n'))
-		_ = f.Close()
-	}
-	h.events[id] = append(h.events[id], ev)
-	for c := range h.subs[id] {
-		select {
-		case c <- ev:
-		default:
-			delete(h.subs[id], c)
-			close(c)
-		}
-	}
-	h.mu.Unlock()
-	return ev
+	return ev, nil
 }
 func ts(t time.Time) int64 { return t.UnixMilli() }

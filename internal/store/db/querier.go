@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	AddParticipant(ctx context.Context, arg AddParticipantParams) error
+	AdvanceEventSeq(ctx context.Context, arg AdvanceEventSeqParams) error
 	CanAccessCall(ctx context.Context, arg CanAccessCallParams) (pgtype.Bool, error)
 	CountCalls(ctx context.Context) (int64, error)
 	CreateCall(ctx context.Context, arg CreateCallParams) error
@@ -26,11 +27,16 @@ type Querier interface {
 	GetSetting(ctx context.Context, key string) ([]byte, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
+	InsertCallEvent(ctx context.Context, arg InsertCallEventParams) error
+	LatestTranscript(ctx context.Context, callID string) (LatestTranscriptRow, error)
+	ListCallEvents(ctx context.Context, arg ListCallEventsParams) ([]ListCallEventsRow, error)
 	ListCalls(ctx context.Context, userID pgtype.Text) ([]ListCallsRow, error)
 	ListKeys(ctx context.Context, userID string) ([]ApiKey, error)
+	ListLegacyArchives(ctx context.Context) ([]ListLegacyArchivesRow, error)
 	ListParticipants(ctx context.Context, callID string) ([]ListParticipantsRow, error)
 	ListShares(ctx context.Context, callID string) ([]ListSharesRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
+	ReserveEventSeq(ctx context.Context, id string) (int64, error)
 	RevokeKey(ctx context.Context, arg RevokeKeyParams) error
 	SearchPeople(ctx context.Context, lower string) ([]User, error)
 	SetSetting(ctx context.Context, arg SetSettingParams) error

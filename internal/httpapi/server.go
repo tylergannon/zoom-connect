@@ -13,7 +13,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -39,14 +38,16 @@ func New(next http.Handler) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	root := env("ARCHIVE_DIR", "data")
-	h := newHub(root)
+	h := newHub(s)
 	a := &Server{s: s, h: h, domain: env("ALLOWED_DOMAIN", "acme.co"), zoomSecret: os.Getenv("ZOOM_WEBHOOK_SECRET")}
 	if err = a.seed(ctx); err != nil {
 		s.Close()
 		return nil, err
 	}
-	a.loadArchives(ctx)
+	if err = a.importArchives(ctx); err != nil {
+		s.Close()
+		return nil, err
+	}
 	a.startSimulators()
 	mux := http.NewServeMux()
 	a.routes(mux)
@@ -275,13 +276,11 @@ func (a *Server) seed(ctx context.Context) error {
 		if status != "live" {
 			ended = pgtype.Timestamptz{Time: start.Add(d.duration), Valid: true}
 		}
-		path := filepath.Join(a.h.root, "calls", id+".jsonl")
 		chatCount := int64(0)
 		if i == 0 || i == 2 {
 			chatCount = 2
 		}
-		lastSeq := int64(len(lines[i])) + chatCount
-		if err := a.s.Q.CreateCall(ctx, db.CreateCallParams{ID: id, Topic: d.topic, Status: status, Started: pgtype.Timestamptz{Time: start, Valid: true}, Ended: ended, HostUserID: d.host, LastSeq: lastSeq, EventPath: path}); err != nil {
+		if err := a.s.Q.CreateCall(ctx, db.CreateCallParams{ID: id, Topic: d.topic, Status: status, Started: pgtype.Timestamptz{Time: start, Valid: true}, Ended: ended, HostUserID: d.host, LastSeq: 0}); err != nil {
 			return err
 		}
 		people := make([]Person, 0, len(d.people))
@@ -294,7 +293,6 @@ func (a *Server) seed(ctx context.Context) error {
 		if i == 1 || i == 4 || i == 8 {
 			_, _ = a.s.Q.CreateShare(ctx, db.CreateShareParams{ID: newID(), CallID: id, Lower: "dana@acme.co", GrantedBy: host.ID})
 		}
-		a.h.load(id, path)
 		eventDuration := d.duration
 		if status == "live" {
 			eventDuration = d.age
@@ -303,33 +301,24 @@ func (a *Server) seed(ctx context.Context) error {
 			p := people[j%len(people)]
 			offset := time.Duration(j) * eventDuration / time.Duration(len(lines[i]))
 			ev := Event{Seq: int64(j + 1), TS: start.Add(offset).UnixMilli(), Recv: start.Add(offset).UnixMilli(), Kind: "transcript", Participant: &p, Data: map[string]any{"text": text, "lang": "en", "final": true}}
-			a.h.append(ctx, id, ev)
+			if err := a.h.append(ctx, id, ev); err != nil {
+				return err
+			}
 		}
 		if chatCount > 0 {
 			for j, text := range []string{"docs draft: the agent API page in the app has curl examples now", "I'll send the revised notes after this meeting."} {
 				p := people[(j+1)%len(people)]
 				offset := eventDuration - time.Duration(2-j)*time.Minute
 				ev := Event{Seq: int64(len(lines[i]) + j + 1), TS: start.Add(offset).UnixMilli(), Recv: start.Add(offset).UnixMilli(), Kind: "chat", Participant: &p, Data: map[string]any{"text": text}}
-				a.h.append(ctx, id, ev)
+				if err := a.h.append(ctx, id, ev); err != nil {
+					return err
+				}
 			}
 		}
 	}
 	return nil
 }
 
-func (a *Server) loadArchives(ctx context.Context) {
-	rows, e := a.s.Pool.Query(ctx, `SELECT id,event_path FROM calls`)
-	if e != nil {
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id, path string
-		if rows.Scan(&id, &path) == nil {
-			a.h.load(id, path)
-		}
-	}
-}
 func (a *Server) startSimulators() {
 	rows, e := a.s.Pool.Query(context.Background(), `SELECT id,status FROM calls WHERE status='live'`)
 	if e != nil {
@@ -343,7 +332,11 @@ func (a *Server) startSimulators() {
 		ids = append(ids, id)
 	}
 	for _, id := range ids {
-		initial := a.h.snapshot(id, 0)
+		initial, err := a.h.snapshot(context.Background(), id, 0)
+		if err != nil {
+			log.Printf("read simulator source: %v", err)
+			continue
+		}
 		if len(initial) > 0 && initial[0].Data["source"] == "zoom" {
 			continue
 		}
@@ -363,19 +356,19 @@ func (a *Server) simulate(id string) {
 			return
 		}
 		p := Person{ID: c.HostUserID, Name: c.HostName, Email: c.HostEmail}
-		a.emit(ctx, id, "transcript", &p, map[string]any{"text": phrases[n%len(phrases)], "lang": "en", "final": true})
+		if _, err := a.emit(ctx, id, "transcript", &p, map[string]any{"text": phrases[n%len(phrases)], "lang": "en", "final": true}); err != nil {
+			log.Printf("persist simulated event: %v", err)
+		}
 		cancel()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	if _, err := a.s.Pool.Exec(ctx, `UPDATE calls SET status='stopped',ended=now() WHERE id=$1 AND status='live'`, id); err == nil {
-		a.emit(ctx, id, "stream.stopped", nil, map[string]any{"reason": "demo simulation limit reached"})
+	if _, err := a.emit(ctx, id, "stream.stopped", nil, map[string]any{"reason": "demo simulation limit reached"}); err != nil {
+		log.Printf("persist stop: %v", err)
 	}
 	cancel()
 }
-func (a *Server) emit(ctx context.Context, id, kind string, p *Person, data map[string]any) Event {
-	ev := a.h.appendNext(id, kind, p, data)
-	_ = a.s.Q.UpdateCallSeq(ctx, db.UpdateCallSeqParams{ID: id, LastSeq: ev.Seq})
-	return ev
+func (a *Server) emit(ctx context.Context, id, kind string, p *Person, data map[string]any) (Event, error) {
+	return a.h.appendNext(ctx, id, kind, p, data)
 }
 func (a *Server) admin(p Principal) bool { return p.User.IsAdmin }
 func (a *Server) isParticipant(ctx context.Context, id, userID string) bool {
@@ -427,18 +420,19 @@ func (a *Server) toCall(ctx context.Context, c db.GetCallRow, p Principal) Call 
 		t := c.Ended.Time
 		end = &t
 	}
-	return Call{ID: c.ID, Topic: c.Topic, Status: c.Status, Started: c.Started.Time, Ended: end, Host: Person{ID: c.HostUserID, Name: c.HostName, Email: c.HostEmail}, Participants: people, LastSeq: c.LastSeq, LatestEvent: a.latestEvent(c.ID), IsParticipant: a.isParticipant(ctx, c.ID, p.User.ID), CanShare: a.isParticipant(ctx, c.ID, p.User.ID)}
+	return Call{ID: c.ID, Topic: c.Topic, Status: c.Status, Started: c.Started.Time, Ended: end, Host: Person{ID: c.HostUserID, Name: c.HostName, Email: c.HostEmail}, Participants: people, LastSeq: c.LastSeq, LatestEvent: a.latestEvent(ctx, c.ID), IsParticipant: a.isParticipant(ctx, c.ID, p.User.ID), CanShare: a.isParticipant(ctx, c.ID, p.User.ID)}
 }
 
-func (a *Server) latestEvent(id string) *Event {
-	events := a.h.snapshot(id, 0)
-	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].Kind == "transcript" {
-			v := events[i]
-			return &v
-		}
+func (a *Server) latestEvent(ctx context.Context, id string) *Event {
+	row, err := a.s.Q.LatestTranscript(ctx, id)
+	if err != nil {
+		return nil
 	}
-	return nil
+	ev, err := decodeEvent(row.Seq, row.Ts, row.Recv, row.Kind, row.Participant, row.Data)
+	if err != nil {
+		return nil
+	}
+	return &ev
 }
 
 func (a *Server) calls(w http.ResponseWriter, r *http.Request) {
@@ -460,7 +454,7 @@ func (a *Server) calls(w http.ResponseWriter, r *http.Request) {
 		for _, q := range people {
 			ps = append(ps, Person{ID: q.ParticipantID, Name: q.Name, Email: q.Email.String})
 		}
-		out = append(out, Call{ID: row.ID, Topic: row.Topic, Status: row.Status, Started: row.Started.Time, Ended: end, Host: Person{ID: row.HostUserID, Name: row.HostName, Email: row.HostEmail}, Participants: ps, LastSeq: row.LastSeq, LatestEvent: a.latestEvent(row.ID), SharedBy: row.SharedBy, IsParticipant: row.IsParticipant, CanShare: row.IsParticipant})
+		out = append(out, Call{ID: row.ID, Topic: row.Topic, Status: row.Status, Started: row.Started.Time, Ended: end, Host: Person{ID: row.HostUserID, Name: row.HostName, Email: row.HostEmail}, Participants: ps, LastSeq: row.LastSeq, LatestEvent: a.latestEvent(r.Context(), row.ID), SharedBy: row.SharedBy, IsParticipant: row.IsParticipant, CanShare: row.IsParticipant})
 	}
 	writeJSON(w, 200, out)
 }
@@ -478,7 +472,12 @@ func (a *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = c
 	from, _ := parseFrom(r)
-	writeJSON(w, 200, a.h.snapshot(r.PathValue("id"), from))
+	events, err := a.h.snapshot(r.Context(), r.PathValue("id"), from)
+	if err != nil {
+		jsonError(w, 500, "database error")
+		return
+	}
+	writeJSON(w, 200, events)
 }
 func parseFrom(r *http.Request) (int64, error) {
 	v := r.URL.Query().Get("from")
@@ -499,6 +498,12 @@ func (a *Server) stream(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.PathValue("id")
 	from, _ := parseFrom(r)
+	replay, sub, unsub, err := a.h.replaySubscribe(r.Context(), id, from)
+	if err != nil {
+		jsonError(w, 500, "database error")
+		return
+	}
+	defer unsub()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -508,8 +513,6 @@ func (a *Server) stream(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = fmt.Fprint(w, ": connected\n\n")
 	fl.Flush()
-	replay, sub, unsub := a.h.replaySubscribe(id, from)
-	defer unsub()
 	send := func(e Event) bool {
 		b, _ := json.Marshal(e)
 		_, er := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", e.Seq, e.Kind, b)
@@ -565,7 +568,11 @@ func (a *Server) transcript(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	events := a.h.snapshot(r.PathValue("id"), 0)
+	events, err := a.h.snapshot(r.Context(), r.PathValue("id"), 0)
+	if err != nil {
+		jsonError(w, 500, "database error")
+		return
+	}
 	baseTS := c.Started.Time.UnixMilli()
 	format := r.URL.Query().Get("format")
 	if format == "" {

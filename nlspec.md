@@ -4,6 +4,29 @@ Status: draft v0.2, 2026-10-15. Sole authority for intent; the code is the
 authority for fact. Amend only through spec-defect escalation or by elevating
 demonstrated test cases into claims.
 
+## Current prototype amendment — October 16, 2026
+
+Tyler explicitly replaced the draft object-storage requirement for normalized
+meeting content: Postgres is the durable record of transcript, chat, and
+lifecycle events. Store one row per event, keyed by call ID and sequence;
+JSON payloads belong to individual events, never one whole-call object.
+Sequence allocation, insertion, and any stop/interruption status change commit
+atomically. Publish to live subscribers only after commit. Replay resumes
+strictly after the requested sequence, with no gap at the replay/live handoff.
+This deployment remains one application instance.
+
+Existing local JSONL archives must import without changing event content or
+sequence, atomically per call and idempotently across startup. An incomplete
+or conflicting archive must fail visibly rather than silently discard data.
+Once imported, replay and downloads must work without the original files.
+Raw recorder diagnostics remain separate from the application's durable event
+store. Audio/video storage and hosting are later decisions.
+
+This amendment supersedes the event-related R2/archive requirements below for
+the current prototype. The remaining draft describes future integrations;
+Google auth and fully integrated production RTMS are not completed by this
+storage change.
+
 ## 1. Overview and goals
 
 Zoom Connect is a headless service that receives the live content of Zoom

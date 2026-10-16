@@ -108,12 +108,33 @@ Local proof URL: http://127.0.0.1:8080/calls/01M532Q1J51XZP30JHHAJRR42C
 
 ## Storage and evidence boundaries
 
-- Postgres: users, hashed API keys, sessions, call index, participants, shares and settings.
-- Normalized transcript/chat events: `data-live/calls/<call-id>.jsonl`.
+- Postgres: users, hashed API keys, sessions, call index, participants, shares, settings, and one `call_events` row per normalized transcript/chat/lifecycle event.
+- The original `data-live/calls/<call-id>.jsonl` files remain untouched backups after the one-time import. New normalized events are database-only.
 - Raw Zoom webhook/signaling/media messages: ignored `recordings/` directory.
 - The bridge reuses the existing authenticated prototype APIs and marks calls as source `zoom`; scripted transcript generators are excluded from these calls, including after web-app restart.
 - The displayed viewer/host identity is still the prototype account. Speaker attribution in transcript lines is real Zoom data. Real participant-to-user matching is not implemented.
 - Public chat handshakes succeeded, but a public chat message was not demonstrated. End-of-call archiving, reconnect recovery, audio, video and screen-share capture were not demonstrated.
 - The recorder's broad metadata subscription received an `Invalid event type` response; transcript delivery continued. Participant metadata needs a targeted follow-up before claiming it works.
-- R2 is not implemented. The user proposed moving text content into Postgres during wrap-up; no storage migration was authorized or performed in this setup task.
+- R2 is not implemented. The user subsequently authorized the Postgres event migration; it is running locally. The standalone recorder still writes raw protocol diagnostics, which are separate from application event persistence.
 - Go tests passed across the repository. `vp run check` passed with zero errors and zero warnings after installing frontend dependencies locally.
+
+## 7. Postgres event migration
+
+The upgrade applies the idempotent event schema at startup, imports each legacy
+archive transactionally, and clears its `calls.event_path` marker only after
+successful import. Stop the previous web process before running the upgraded
+binary. The recorder and public tunnel can remain running during this short
+web-app restart. No Zoom Marketplace changes are needed.
+
+At the local cutover, all 53 original real Zoom events were identical through
+the upgraded API. Postgres contained 54 contiguous event rows for that call:
+one subsequent real Zoom event had already arrived through the same recorder.
+The transcript download retained its speaker attribution. See
+[database proof](database-proof.json).
+
+Integration tests exercised two concurrent SSE readers, concurrent writes,
+a real database constraint rejection returning HTTP 500 without publishing or
+advancing sequence, a fresh server replay, Last-Event-ID resume, transcript
+download, and atomic/idempotent import with the original file removed. Go tests
+and the frontend check passed. Current live subscriptions require one app
+instance; multi-instance fanout is not implemented.

@@ -1,0 +1,10 @@
+{
+  "call_id": "01M532Q1J51XZP30JHHAJRR42C",
+  "legacy_events": 53,
+  "database_api_events": 54,
+  "legacy_events_identical": true,
+  "sequences_contiguous": true,
+  "speaker_download_preserved": true,
+  "archive_bytes": 14267,
+  "archive_mtime_ns": 1792179242585990063
+}

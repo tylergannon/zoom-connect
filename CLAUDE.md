@@ -5,12 +5,13 @@ and participant events to us over Realtime Media Streams (RTMS); we keep them
 and serve them to the company's people (web UI, Google sign-in restricted to
 one Google Apps domain) and to their agents (API keys, SSE, downloads).
 
-The current implementation is the local proof of concept Tyler requested:
-Google sign-in and Zoom calls are explicitly simulated, and meeting content
-uses local JSONL files under `ARCHIVE_DIR` rather than R2. The requirements
-below describe the eventual real integrations; do not present the demo as
-having completed them. API keys, sharing, access checks and SSE use the real
-Go handlers and Postgres. Slack and audio remain deferred.
+The current implementation combines the local POC UI (simulated Google
+sign-in and seeded demo calls) with a tested live Zoom RTMS recorder bridge.
+Postgres stores each normalized meeting event as a separate ordered row,
+alongside API keys, sharing, access checks, and the call index. Existing JSONL
+archives are imported once at startup; normalized events no longer depend on
+local files. The standalone recorder still writes raw protocol diagnostics.
+Slack and audio/video capture in the web app remain deferred.
 
 ## Read first
 
@@ -43,10 +44,11 @@ deferred. Do not build deferred items without being asked.
   Never call `pnpm`/`npm` directly.
 - UI components: shadcn-svelte (`vp dlx shadcn-svelte@latest add <component>`).
   Reference: https://www.shadcn-svelte.com/llms.txt
-- Postgres via sqlc over pgx/v5 for people, keys, shares, the call index and
-  settings. Load the `sqlc` skill for schema/query work. Meeting content never
-  goes in Postgres.
-- Cloudflare R2 (S3 API) holds meeting content (nlspec §5.3).
+- Postgres via sqlc over pgx/v5 for people, keys, shares, settings, the call
+  index, and individual text/lifecycle events. Generate query bindings with
+  `sqlc generate` after changing schema or queries.
+- The October 16 storage amendment in nlspec supersedes the draft R2 design
+  for normalized events. Hosting and binary-media storage remain undecided.
 - Go 1.27.2 exactly (skgo dev requires it).
 
 ## Layout

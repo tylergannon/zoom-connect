@@ -34,6 +34,20 @@ func (q *Queries) AddParticipant(ctx context.Context, arg AddParticipantParams) 
 	return err
 }
 
+const advanceEventSeq = `-- name: AdvanceEventSeq :exec
+UPDATE calls SET last_seq=GREATEST(last_seq,$2) WHERE id=$1
+`
+
+type AdvanceEventSeqParams struct {
+	ID      string `json:"id"`
+	LastSeq int64  `json:"last_seq"`
+}
+
+func (q *Queries) AdvanceEventSeq(ctx context.Context, arg AdvanceEventSeqParams) error {
+	_, err := q.db.Exec(ctx, advanceEventSeq, arg.ID, arg.LastSeq)
+	return err
+}
+
 const canAccessCall = `-- name: CanAccessCall :one
 SELECT EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=$1 AND p.user_id=$2)
    OR EXISTS(SELECT 1 FROM shares s WHERE s.call_id=$1 AND (s.grantee_user_id=$2 OR s.email=(SELECT email FROM users WHERE id=$2)))
@@ -324,6 +338,105 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 	return i, err
 }
 
+const insertCallEvent = `-- name: InsertCallEvent :exec
+INSERT INTO call_events(call_id,seq,ts,recv,kind,participant,data) VALUES($1,$2,$3,$4,$5,$6,$7)
+`
+
+type InsertCallEventParams struct {
+	CallID      string `json:"call_id"`
+	Seq         int64  `json:"seq"`
+	Ts          int64  `json:"ts"`
+	Recv        int64  `json:"recv"`
+	Kind        string `json:"kind"`
+	Participant []byte `json:"participant"`
+	Data        []byte `json:"data"`
+}
+
+func (q *Queries) InsertCallEvent(ctx context.Context, arg InsertCallEventParams) error {
+	_, err := q.db.Exec(ctx, insertCallEvent,
+		arg.CallID,
+		arg.Seq,
+		arg.Ts,
+		arg.Recv,
+		arg.Kind,
+		arg.Participant,
+		arg.Data,
+	)
+	return err
+}
+
+const latestTranscript = `-- name: LatestTranscript :one
+SELECT seq,ts,recv,kind,participant,data FROM call_events WHERE call_id=$1 AND kind='transcript' ORDER BY seq DESC LIMIT 1
+`
+
+type LatestTranscriptRow struct {
+	Seq         int64  `json:"seq"`
+	Ts          int64  `json:"ts"`
+	Recv        int64  `json:"recv"`
+	Kind        string `json:"kind"`
+	Participant []byte `json:"participant"`
+	Data        []byte `json:"data"`
+}
+
+func (q *Queries) LatestTranscript(ctx context.Context, callID string) (LatestTranscriptRow, error) {
+	row := q.db.QueryRow(ctx, latestTranscript, callID)
+	var i LatestTranscriptRow
+	err := row.Scan(
+		&i.Seq,
+		&i.Ts,
+		&i.Recv,
+		&i.Kind,
+		&i.Participant,
+		&i.Data,
+	)
+	return i, err
+}
+
+const listCallEvents = `-- name: ListCallEvents :many
+SELECT seq,ts,recv,kind,participant,data FROM call_events WHERE call_id=$1 AND seq>$2 ORDER BY seq
+`
+
+type ListCallEventsParams struct {
+	CallID string `json:"call_id"`
+	Seq    int64  `json:"seq"`
+}
+
+type ListCallEventsRow struct {
+	Seq         int64  `json:"seq"`
+	Ts          int64  `json:"ts"`
+	Recv        int64  `json:"recv"`
+	Kind        string `json:"kind"`
+	Participant []byte `json:"participant"`
+	Data        []byte `json:"data"`
+}
+
+func (q *Queries) ListCallEvents(ctx context.Context, arg ListCallEventsParams) ([]ListCallEventsRow, error) {
+	rows, err := q.db.Query(ctx, listCallEvents, arg.CallID, arg.Seq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCallEventsRow
+	for rows.Next() {
+		var i ListCallEventsRow
+		if err := rows.Scan(
+			&i.Seq,
+			&i.Ts,
+			&i.Recv,
+			&i.Kind,
+			&i.Participant,
+			&i.Data,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCalls = `-- name: ListCalls :many
 SELECT c.id,c.topic,c.status,c.started,c.ended,c.host_user_id,c.last_seq,c.event_path,
        u.email AS host_email,u.name AS host_name,
@@ -406,6 +519,35 @@ func (q *Queries) ListKeys(ctx context.Context, userID string) ([]ApiKey, error)
 			&i.LastUsedAt,
 			&i.RevokedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLegacyArchives = `-- name: ListLegacyArchives :many
+SELECT id,event_path FROM calls WHERE event_path<>''
+`
+
+type ListLegacyArchivesRow struct {
+	ID        string `json:"id"`
+	EventPath string `json:"event_path"`
+}
+
+func (q *Queries) ListLegacyArchives(ctx context.Context) ([]ListLegacyArchivesRow, error) {
+	rows, err := q.db.Query(ctx, listLegacyArchives)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLegacyArchivesRow
+	for rows.Next() {
+		var i ListLegacyArchivesRow
+		if err := rows.Scan(&i.ID, &i.EventPath); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -526,6 +668,17 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const reserveEventSeq = `-- name: ReserveEventSeq :one
+UPDATE calls SET last_seq=last_seq+1 WHERE id=$1 RETURNING last_seq
+`
+
+func (q *Queries) ReserveEventSeq(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRow(ctx, reserveEventSeq, id)
+	var last_seq int64
+	err := row.Scan(&last_seq)
+	return last_seq, err
 }
 
 const revokeKey = `-- name: RevokeKey :exec

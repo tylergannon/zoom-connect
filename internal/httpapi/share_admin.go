@@ -244,13 +244,15 @@ func (a *Server) createDemoCall(w http.ResponseWriter, r *http.Request) {
 	}
 	id := newID()
 	now := time.Now().UTC()
-	path := a.h.root + "/calls/" + id + ".jsonl"
-	if e := a.s.Q.CreateCall(r.Context(), db.CreateCallParams{ID: id, Topic: in.Topic, Status: "live", Started: pgtype.Timestamptz{Time: now, Valid: true}, HostUserID: p.User.ID, EventPath: path}); e != nil {
+	if e := a.s.Q.CreateCall(r.Context(), db.CreateCallParams{ID: id, Topic: in.Topic, Status: "live", Started: pgtype.Timestamptz{Time: now, Valid: true}, HostUserID: p.User.ID}); e != nil {
 		jsonError(w, 500, "database error")
 		return
 	}
 	_ = a.s.Q.AddParticipant(r.Context(), db.AddParticipantParams{CallID: id, ParticipantID: p.User.ID, UserID: pgtype.Text{String: p.User.ID, Valid: true}, Name: p.User.Name, Email: pgtype.Text{String: p.User.Email, Valid: true}})
-	a.emit(r.Context(), id, "stream.started", nil, map[string]any{"source": in.Source})
+	if _, err := a.emit(r.Context(), id, "stream.started", nil, map[string]any{"source": in.Source}); err != nil {
+		jsonError(w, 500, "database error")
+		return
+	}
 	// The RTMS recorder uses this existing local-demo API to supply real
 	// meeting events. Never mix scripted transcript lines into those calls.
 	if in.Source != "zoom" {
@@ -282,7 +284,11 @@ func (a *Server) addDemoEvent(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 400, "invalid event")
 		return
 	}
-	ev := a.emit(r.Context(), c.ID, in.Kind, &in.Participant, in.Data)
+	ev, err := a.emit(r.Context(), c.ID, in.Kind, &in.Participant, in.Data)
+	if err != nil {
+		jsonError(w, 500, "database error")
+		return
+	}
 	writeJSON(w, 201, ev)
 }
 func (a *Server) stopDemoCall(w http.ResponseWriter, r *http.Request) {
@@ -297,9 +303,10 @@ func (a *Server) stopDemoCall(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 404, "call not found")
 		return
 	}
-	status := "stopped"
-	_ = a.s.Q.StopCall(r.Context(), db.StopCallParams{ID: id, Status: status})
-	a.emit(r.Context(), id, "stream.stopped", nil, map[string]any{"reason": "demo stop"})
+	if _, err := a.emit(r.Context(), id, "stream.stopped", nil, map[string]any{"reason": "demo stop"}); err != nil {
+		jsonError(w, 500, "database error")
+		return
+	}
 	c, e = a.s.Q.GetCall(r.Context(), id)
 	if e != nil {
 		jsonError(w, 500, "database error")
@@ -422,8 +429,10 @@ func (a *Server) zoomWebhook(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(payload.Event, "interrupted") {
 			status = "interrupted"
 		}
-		_, _ = a.s.Pool.Exec(r.Context(), `UPDATE calls SET status=$2,ended=now() WHERE id=$1`, payload.Payload.Object.UUID, status)
-		a.emit(r.Context(), payload.Payload.Object.UUID, "stream."+status, nil, map[string]any{"reason": "Zoom webhook"})
+		if _, err := a.emit(r.Context(), payload.Payload.Object.UUID, "stream."+status, nil, map[string]any{"reason": "Zoom webhook"}); err != nil {
+			jsonError(w, 500, "database error")
+			return
+		}
 		addWebhook(webhookEntry{At: now, Event: payload.Event, Topic: payload.Payload.Object.Topic, Outcome: "accepted"})
 	} else {
 		addWebhook(webhookEntry{At: now, Event: payload.Event, Outcome: "ignored"})

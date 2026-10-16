@@ -30,6 +30,16 @@ type Call struct {
 	EventPath  string             `json:"event_path"`
 }
 
+type CallEvent struct {
+	CallID      string `json:"call_id"`
+	Seq         int64  `json:"seq"`
+	Ts          int64  `json:"ts"`
+	Recv        int64  `json:"recv"`
+	Kind        string `json:"kind"`
+	Participant []byte `json:"participant"`
+	Data        []byte `json:"data"`
+}
+
 type CallParticipant struct {
 	CallID        string      `json:"call_id"`
 	ParticipantID string      `json:"participant_id"`

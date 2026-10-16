@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tylergannon/zoom-connect/internal/store/db"
@@ -27,18 +26,20 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		p.Close()
 		return nil, err
 	}
-	b, err := schema.ReadFile("migrations/001_initial.sql")
+	// Both migrations are idempotent, so existing POC databases upgrade in place.
+	files, err := schema.ReadDir("migrations")
 	if err != nil {
 		p.Close()
 		return nil, err
 	}
-	for _, statement := range strings.Split(string(b), ";") {
-		if strings.TrimSpace(statement) == "" {
-			continue
+	for _, file := range files {
+		b, err := schema.ReadFile("migrations/" + file.Name())
+		if err == nil {
+			_, err = p.Exec(ctx, string(b))
 		}
-		if _, err = p.Exec(ctx, statement); err != nil {
+		if err != nil {
 			p.Close()
-			return nil, fmt.Errorf("apply schema: %w", err)
+			return nil, fmt.Errorf("apply schema %s: %w", file.Name(), err)
 		}
 	}
 	return &Store{Pool: p, Q: db.New(p)}, nil
