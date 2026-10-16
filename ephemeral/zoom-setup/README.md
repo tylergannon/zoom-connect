@@ -144,6 +144,9 @@ instance; multi-instance fanout is not implemented.
 
 Public application: https://zoom-connect-tpg-demo.fly.dev/
 
+Status: the separate production Zoom app is installed, and actual speech from
+Tyler’s fresh meeting reached the deployed web view and Supabase on October 16.
+
 Sign in as `tyler@tylergannon.com` using `DEMO_LOGIN_PASSWORD` in Doppler
 `zoom-connect / prd`. The deployed app disables the simulated persona routes.
 The hosted database starts empty: Tyler explicitly declined copying old calls.
@@ -207,14 +210,22 @@ fly machine restart 8d99909f12d0d8 --app zoom-connect-tpg-demo
 ```
 
 The restarted Fly endpoint validated this new app's HMAC challenge successfully.
-Installation is currently awaiting Tyler's action-time approval at **Allow**.
-After installation, verify **Remove App**, then start a meeting on the same Zoom
-account, approve content sharing and speak. Verify actual speech in the hosted
-call view before claiming end-to-end production capture. Local success alone is
-not evidence that the deployed stream works.
+Tyler approved the permissions in chat; **Allow** completed successfully and
+the developer page shows **Remove App**, confirming installation. Startup was
+authorized for owned and externally hosted meetings. Start a meeting on the same Zoom
+account, approve content sharing and speak. The fresh meeting test succeeded: call
+`01M535QKTEDWZRKR9KVBRV9VKZ` displayed actual speech attributed to Tyler Gannon,
+including “Yeah, we’ll get it. All right.” Direct Supabase verification found
+six contiguous event rows (1–6), including five transcript rows. This proves
+the deployed Zoom → recorder → Postgres → live UI path. Public chat and other
+media remain unproved. The account settings confirm both the original demo and
+production apps remain installed with **Owned & external / Always ask**.
 
 ![Separate hosted Zoom app](14-production-app-created.png)
 ![Production authorization](15-production-authorization.png)
+![Production app installed](16-production-installed.png)
+![Production startup settings](17-production-autostart.png)
+![Real transcript on Fly](18-fly-live-transcript.png)
 
 For teardown, remove the production Zoom app from the account, revoke its
 Doppler service token, and destroy the Fly app when Tyler requests removal.

@@ -13,6 +13,14 @@
   "separate_zoom_app_id": "LIt3ti3IQ-KbHXMIhz4x3A",
   "production_zoom_credentials_loaded": true,
   "production_zoom_webhook_validation_verified": true,
-  "production_zoom_installation": "awaiting_user_approval",
-  "live_zoom_transcript_on_fly_verified": false
+  "production_zoom_installation": "installed; Remove App verified",
+  "live_zoom_transcript_on_fly_verified": true,
+  "production_zoom_autostart": "Owned & external; Always ask",
+  "live_call_id": "01M535QKTEDWZRKR9KVBRV9VKZ",
+  "supabase_call_events": {
+    "event_count": 6,
+    "first_seq": 1,
+    "last_seq": 6,
+    "transcript_count": 5
+  }
 }
