@@ -31,6 +31,7 @@ type Server struct {
 	login          *passwordLogin
 	recorder       http.Handler
 	recorderHealth string
+	screens        screenStorage
 }
 
 func New(next http.Handler) (http.Handler, error) {
@@ -56,6 +57,10 @@ func New(next http.Handler) (http.Handler, error) {
 		return nil, err
 	}
 	if err = a.configureRecorder(); err != nil {
+		s.Close()
+		return nil, err
+	}
+	if err = a.configureScreens(); err != nil {
 		s.Close()
 		return nil, err
 	}
@@ -87,6 +92,8 @@ func (a *Server) routes(m *http.ServeMux) {
 	priv("GET /api/calls/{id}/events", a.events)
 	priv("GET /api/calls/{id}/stream", a.stream)
 	priv("GET /api/calls/{id}/transcript", a.transcript)
+	priv("POST /api/demo/calls/{id}/screenshots", a.addScreenFrame)
+	priv("GET /api/calls/{id}/screenshots/{seq}", a.screenFrameLink)
 	priv("GET /api/calls/{id}/shares", a.shares)
 	priv("POST /api/calls/{id}/shares", a.addShare)
 	priv("DELETE /api/calls/{id}/shares/{shareId}", a.removeShare)
@@ -504,6 +511,14 @@ func (a *Server) events(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 500, "database error")
 		return
 	}
+	for i, ev := range events {
+		events[i], err = a.screenEvent(r.Context(), ev)
+		if err != nil {
+			jsonError(w, 503, "image signing unavailable")
+			return
+		}
+	}
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, 200, events)
 }
 func parseFrom(r *http.Request) (int64, error) {
@@ -541,6 +556,10 @@ func (a *Server) stream(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprint(w, ": connected\n\n")
 	fl.Flush()
 	send := func(e Event) bool {
+		e, err = a.screenEvent(r.Context(), e)
+		if err != nil {
+			return false
+		}
 		b, _ := json.Marshal(e)
 		_, er := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", e.Seq, e.Kind, b)
 		fl.Flush()

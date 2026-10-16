@@ -1,0 +1,194 @@
+==> Verifying app config
+Validating fly.toml
+[32m✓[0m Configuration is valid
+--> Verified app config
+==> Building image
+==> Building image with Docker
+--> docker host: 29.6.2 linux aarch64
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 551B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/dopplerhq/cli:3
+#2 DONE 0.5s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 181B done
+#3 DONE 0.0s
+
+#4 [1/7] FROM docker.io/dopplerhq/cli:3@sha256:bc59e0e97ea596a2c402f108043b9fd6ad574db253998364de939c0ca373453e
+#4 resolve docker.io/dopplerhq/cli:3@sha256:bc59e0e97ea596a2c402f108043b9fd6ad574db253998364de939c0ca373453e done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 43.78MB 0.5s done
+#5 DONE 0.5s
+
+#6 [2/7] RUN apk add --no-cache bash ca-certificates && adduser -D -u 10001 app
+#6 CACHED
+
+#7 [3/7] WORKDIR /app
+#7 CACHED
+
+#8 [4/7] COPY ephemeral/bin/zoom-connect-linux /app/zoom-connect
+#8 DONE 0.1s
+
+#9 [5/7] COPY ephemeral/bin/rtmsrec-linux /app/rtmsrec
+#9 DONE 0.0s
+
+#10 [6/7] COPY deploy/run-services.sh /app/run-services.sh
+#10 DONE 0.0s
+
+#11 [7/7] RUN mkdir -p /app/recordings && chown -R app:app /app
+#11 DONE 0.2s
+
+#12 exporting to image
+#12 exporting layers
+#12 exporting layers 1.3s done
+#12 exporting manifest sha256:2a076b48c23e230d427dd0d931b95da180fb6eb4fc43b5ba265dfab243d67ac3 done
+#12 exporting config sha256:2d0ededfbb1b12a95552ab9517324ba44da7eb0ed46d952d238f22609d9f500c done
+#12 naming to registry.fly.io/zoom-connect-tpg-demo:deployment-01M5361QEKT1J9D8FCGVV9KRV8 done
+#12 DONE 1.3s
+[38;5;252m--> Building image done[0m
+==> Pushing image to fly
+The push refers to repository [registry.fly.io/zoom-connect-tpg-demo]
+5eee1dc66699: Waiting
+e2de96513ba9: Waiting
+365a623f26b1: Waiting
+280770bbb987: Waiting
+57c13aa23227: Waiting
+fa9565df378d: Waiting
+440e1026cbab: Waiting
+5b410e1ab635: Waiting
+681755e1ebb7: Waiting
+49b8345a060c: Waiting
+fa9565df378d: Waiting
+440e1026cbab: Waiting
+5b410e1ab635: Waiting
+681755e1ebb7: Waiting
+49b8345a060c: Waiting
+5eee1dc66699: Waiting
+e2de96513ba9: Waiting
+365a623f26b1: Waiting
+280770bbb987: Waiting
+57c13aa23227: Waiting
+49b8345a060c: Waiting
+5eee1dc66699: Waiting
+e2de96513ba9: Waiting
+365a623f26b1: Waiting
+280770bbb987: Waiting
+57c13aa23227: Waiting
+fa9565df378d: Waiting
+440e1026cbab: Waiting
+5b410e1ab635: Waiting
+681755e1ebb7: Waiting
+5b410e1ab635: Waiting
+681755e1ebb7: Waiting
+49b8345a060c: Waiting
+5eee1dc66699: Waiting
+e2de96513ba9: Waiting
+365a623f26b1: Waiting
+280770bbb987: Waiting
+57c13aa23227: Waiting
+fa9565df378d: Waiting
+440e1026cbab: Waiting
+49b8345a060c: Waiting
+5eee1dc66699: Waiting
+e2de96513ba9: Waiting
+365a623f26b1: Waiting
+280770bbb987: Waiting
+57c13aa23227: Waiting
+fa9565df378d: Waiting
+440e1026cbab: Waiting
+5b410e1ab635: Waiting
+681755e1ebb7: Waiting
+e2de96513ba9: Waiting
+365a623f26b1: Waiting
+280770bbb987: Waiting
+57c13aa23227: Waiting
+fa9565df378d: Waiting
+440e1026cbab: Waiting
+5b410e1ab635: Waiting
+681755e1ebb7: Waiting
+49b8345a060c: Waiting
+5eee1dc66699: Waiting
+5eee1dc66699: Waiting
+e2de96513ba9: Waiting
+365a623f26b1: Waiting
+280770bbb987: Waiting
+57c13aa23227: Waiting
+fa9565df378d: Waiting
+440e1026cbab: Waiting
+5b410e1ab635: Waiting
+681755e1ebb7: Waiting
+49b8345a060c: Waiting
+5eee1dc66699: Waiting
+e2de96513ba9: Layer already exists
+365a623f26b1: Waiting
+280770bbb987: Waiting
+57c13aa23227: Waiting
+fa9565df378d: Waiting
+440e1026cbab: Waiting
+5b410e1ab635: Waiting
+681755e1ebb7: Waiting
+49b8345a060c: Waiting
+fa9565df378d: Waiting
+440e1026cbab: Layer already exists
+5b410e1ab635: Waiting
+681755e1ebb7: Waiting
+49b8345a060c: Waiting
+5eee1dc66699: Layer already exists
+365a623f26b1: Waiting
+280770bbb987: Waiting
+57c13aa23227: Waiting
+365a623f26b1: Waiting
+280770bbb987: Waiting
+57c13aa23227: Waiting
+fa9565df378d: Waiting
+5b410e1ab635: Waiting
+681755e1ebb7: Waiting
+49b8345a060c: Waiting
+365a623f26b1: Waiting
+280770bbb987: Layer already exists
+57c13aa23227: Waiting
+fa9565df378d: Waiting
+5b410e1ab635: Waiting
+681755e1ebb7: Waiting
+49b8345a060c: Waiting
+fa9565df378d: Waiting
+5b410e1ab635: Waiting
+681755e1ebb7: Layer already exists
+49b8345a060c: Waiting
+365a623f26b1: Waiting
+57c13aa23227: Layer already exists
+365a623f26b1: Waiting
+5b410e1ab635: Pushed
+365a623f26b1: Pushed
+49b8345a060c: Pushed
+fa9565df378d: Pushed
+deployment-01M5361QEKT1J9D8FCGVV9KRV8: digest: sha256:2a076b48c23e230d427dd0d931b95da180fb6eb4fc43b5ba265dfab243d67ac3 size: 2200
+--> Pushing image done
+image: registry.fly.io/zoom-connect-tpg-demo:deployment-01M5361QEKT1J9D8FCGVV9KRV8
+image size: 60 MB
+
+Watch your deployment at https://fly.io/apps/zoom-connect-tpg-demo/monitoring
+
+Updating existing machines in 'zoom-connect-tpg-demo' with rolling strategy
+> Acquiring lease for 8d99909f12d0d8
+> Acquired lease for 8d99909f12d0d8
+> Updating machine config for 8d99909f12d0d8
+> Updating 8d99909f12d0d8 [app]
+> Updated machine config for 8d99909f12d0d8
+> Waiting for machine 8d99909f12d0d8 to reach a good state
+> Machine 8d99909f12d0d8 reached started state
+> Running smoke checks on machine 8d99909f12d0d8
+> Running machine checks on machine 8d99909f12d0d8
+> Checking health of machine 8d99909f12d0d8
+✔ Machine 8d99909f12d0d8 is now in a good state
+> Clearing lease for 8d99909f12d0d8
+✔ Cleared lease for 8d99909f12d0d8
+Checking DNS configuration for zoom-connect-tpg-demo.fly.dev
+✓ DNS configuration verified
+
+Visit your newly deployed app at https://zoom-connect-tpg-demo.fly.dev/
+
