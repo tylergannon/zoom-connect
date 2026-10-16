@@ -1,0 +1,78 @@
+.k-name b { display: block; font-weight: 550; }
+  .k-name span { font-size: 12px; color: var(--muted-foreground); }
+  tr.revoked td { color: var(--muted-foreground); }
+  tr.revoked .k-name b { text-decoration: line-through; }
+  .live-use { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; }
+  @media (max-width: 640px) { .col-hide { display: none; } }
+MVP
+API keys
+Every user can create and revoke API keys, so they can give a key to their agents and any agent can connect to the service and download call transcripts — or listen live.
+Zoom Connect
+Calls
+● 2
+API keys
+Agent API
+Admin
+Zoom connection
+Slack
+Later
+DK
+Dana Kim
+dana@acme.co
+API keys
+Keys act as you: an agent sees exactly the calls you can see.
+Create key
+Treat keys like passwords
+We show a key's secret once, when you create it. Revoke a key the moment an agent no longer needs it — it stops working immediately, including open streams.
+Name
+Key
+Created
+Last used
+Status
+notes-agent
+Summarizes my calls
+zc_8fK2…
+2 Oct
+Streaming now
+Active
+Revoke
+crm-sync
+Pushes customer calls to CRM
+zc_Qa71…
+28 Sep
+Streaming now
+Active
+Revoke
+laptop script
+—
+zc_mT0p…
+11 Sep
+3 days ago
+Active
+Revoke
+old-notes-bot
+Revoked 1 Oct by you
+zc_Zz9d…
+20 Aug
+1 Oct
+Revoked
+Design notes
+Purpose
+Self-serve keys for agents. No admin approval in MVP.
+Behavior
+Only the prefix (
+zc_
++ first chars) is ever shown after creation.
+"Streaming now" when the key holds an open SSE connection; otherwise last-used time.
+Revoke asks for confirmation, then closes the key's open streams.
+Revoked keys stay listed (greyed) for audit; hide them behind a toggle if the list grows.
+Empty state: explains what a key is for and links to the Agent API guide.
+Scope
+MVP. Claims U6, U7. Per-key scoping (e.g. one call, read-only finished) is
+Post-MVP
+— every key acts as its owner.
+Implementation
+shadcn-svelte: Table, Badge, Button, Alert, Alert Dialog (revoke), Dialog (create). Store:
+api_keys(id, user_id, name, description, key_hash, prefix, created_at, last_used_at, revoked_at)
+. "Streaming now" comes from the session's subscriber registry, not the DB.
+T6 · T12 · nlspec C7

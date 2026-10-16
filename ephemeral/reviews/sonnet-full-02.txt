@@ -1,0 +1,21 @@
+No material findings in the core flows. I read the code and ran `svelte-check` (0 errors); I did not run the app, a browser or the Go tests.
+
+I found three small defects. None breaks a core flow.
+
+1. **Revoked viewer sees a stuck page.**
+   - **Trigger:** a grantee has a live call open and the grantor removes their share.
+   - **Effect:** the server closes the stream on its next 3-second check (`internal/httpapi/server.go:544`). The browser reconnects and gets a 403, so `EventSource` stops for good. The page keeps showing the old transcript with "Reconnecting…" (`web/src/routes/calls/[id]/CallWorkspace.svelte:69`). Access is cut correctly, but the user never sees a denial. The next reload shows the 403 page.
+
+2. **`/events` can return `null` instead of `[]`.**
+   - **Trigger:** `snapshot` (`internal/httpapi/hub.go:41`) starts from a nil slice. A request with `?from=` at or past the last sequence number, such as an agent catching up, hits it.
+   - **Effect:** the response body is `null`, not the bare array the context file specifies. The UI always requests `from=0` and is unaffected.
+
+3. **Revoke toast never clears.**
+   - **Trigger:** revoking an API key sets `notice='API key revoked'` (`web/src/routes/keys/KeysManager.svelte:37`).
+   - **Effect:** the toast stays on screen until you leave the page. The copy path clears its notice after a timeout; this one doesn't.
+
+**Limits:**
+- I did not exercise the mobile and dark-mode CSS.
+- I did not test the SSE flows live, so the stream and revoke behaviour is from reading the code.
+- I did not test the key-revocation stream close or the Zoom webhook signature path at runtime.
+- I did not touch the demo DB or the server.

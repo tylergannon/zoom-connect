@@ -1,0 +1,64 @@
+.acct { display: grid; gap: 16px; max-width: 720px; }
+  .who-row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .who-row .avatar { width: 48px; height: 48px; font-size: 16px; }
+  .who-row b { display: block; font-size: 16px; font-weight: 600; }
+  .who-row .grow { flex: 1; min-width: 0; }
+  .slackid { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+  .slackid svg { width: 14px; height: 14px; }
+MVP + deferred
+Account & notifications
+Who you're signed in as, and (later) whether Zoom Connect DMs you on Slack when your calls start and finish.
+Zoom Connect
+Calls
+● 2
+API keys
+Agent API
+Admin
+Zoom connection
+Slack
+Later
+DK
+Dana Kim
+dana@acme.co
+Account
+DK
+Dana Kim
+dana@acme.co · signed in with Google
+Admin
+Sign out
+Calls you were in
+41
+Shared with you
+7
+Active API keys
+3
+Slack notifications
+Sent as DMs from the Zoom Connect Slack app.
+Slack account
+Matched by email
+@dana · Acme workspace
+When a call I'm in starts
+A link to the live transcript
+When a call I was in is done
+A link to the finished transcript
+When someone shares a call with me
+Who shared it, and the link
+Design notes
+Purpose
+Identity, sign-out, and personal notification switches. Reached from the user block at the bottom of the sidebar.
+Behavior
+No profile editing — name and photo come from Google on each sign-in.
+If no Slack user matches the email, the Slack card says so and tells the user to ask an admin.
+Slack switches default on once the org installs the Slack app.
+Scope
+Identity + sign-out are MVP.
+The whole Slack notifications card is
+Post-MVP
+(U10, U11, T22). MVP can ship sign-out in the sidebar user menu and skip this page entirely.
+Implementation
+shadcn-svelte: Card, Avatar, Badge, Switch, Button, Dropdown Menu (sidebar user menu). Preferences in
+user_prefs(user_id, slack_on_start, slack_on_end, slack_on_share)
+; Slack user id cached on
+users
+.
+T2 · T20–T22

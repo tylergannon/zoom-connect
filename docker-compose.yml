@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: zoom-connect-postgres
+    environment:
+      POSTGRES_USER: zoom
+      POSTGRES_PASSWORD: zoom
+      POSTGRES_DB: zoom_connect
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - zoom-connect-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zoom -d zoom_connect"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+volumes:
+  zoom-connect-pg:

@@ -1,0 +1,81 @@
+Overview
+Zoom Connect — scope & MVP map
+A web application with a Go service behind it (skgo). Its entire purpose is to live as a Zoom bot for a small company: listen to calls, keep transcripts, and serve them live and afterward to the company's people and their agents.
+MVP line
+Minimally listen to Zoom calls, and have another connected app or two listening in live — or downloading the finished transcript afterward.
+MVP screens
+Build these first.
+Sign in with Google
+Google only; one Google Apps domain
+MVP
+Calls home
+Live now + calls I was in + shared with me
+MVP
+Live call
+ULID URL, updates live over SSE
+MVP
+Finished call
+Transcript, downloads (txt · vtt · json)
+MVP
+Share a call / No access
+Participant shares with a coworker; copyable link
+MVP
+API keys
+Create, copy once, revoke
+MVP
+Agent API guide
+Stream or download structured text
+MVP
+Zoom connection
+Admin: credentials, webhook, health
+MVP
+Deferred (non-MVP)
+Designed now so the shape is known; not built yet.
+Slack integration
+Admin installs Slack app; email → Slack user matching
+Deferred
+Slack DMs
+DM each org member when a call begins and when it is done
+Deferred
+Slack DM preferences
+Section of the Account screen
+Deferred
+Shared media
+Media shared during the call (screen share, files)
+Deferred
+Audio download
+Per-participant Ogg/Opus (nlspec C8); off by default
+Deferred
+Inside MVP screens, deferred elements carry a dashed amber outline and a
+Post-MVP
+tag.
+Access model
+The rule every screen and every API route enforces.
+Who gets in
+Google sign-in with a verified email at
+ALLOWED_DOMAIN
+(env var). Everyone else is refused.
+What they see
+Any call they were in, plus calls shared with them by someone who was in it.
+Agents
+An API key acts as its owner: same calls, live (SSE) and finished (download).
+Design notes
+Visual system
+shadcn-svelte, neutral base color, Geist. One accent: red for
+live
+. Light theme shown; dark comes free from shadcn tokens.
+App shell
+shadcn Sidebar: Calls, API keys, Agent API; Admin group (Zoom connection, Slack) visible to admins only. Collapses to a top bar under 900px.
+Open questions
+Q1 Who is an admin? (proposal:
+ADMIN_EMAILS
+)
+Q2 Can a grantee re-share? (proposal: no)
+Q3 Do we get participant emails live?
+Q4 Host always counts as participant?
+Source
+Claims U1–U12 and requirements T1–T23 live in
+docs/requirements.md
+; the pipeline (RTMS → session → archive) is
+nlspec.md
+. Each screen's notes cite the claims it serves.

@@ -1,0 +1,57 @@
+.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .three > * { min-width: 0; }
+  .three > div { display: flex; flex-direction: column; }
+  .three .frame { flex: 1; display: flex; }
+  .three .overlay { padding: 28px 14px; align-items: start; flex: 1; }
+  .secret { font-family: var(--mono); font-size: 13px; background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; word-break: break-all; }
+  @media (max-width: 1000px) { .three { grid-template-columns: minmax(0, 1fr); } }
+MVP
+Create & revoke an API key
+The three dialogs behind the API keys screen: name a key, copy its secret once, revoke it.
+1 · Create
+Create API key
+Give it a name you'll recognize when it shows up listening to a call.
+Name
+notes-agent
+What is it for?
+(optional)
+Summarizes my calls
+This key will see every call you can see — including future ones — until revoked.
+Cancel
+Create key
+2 · Copy secret (shown once)
+Copy your key now
+This is the only time we'll show it. Store it in your agent's secrets.
+zc_8fK2xQ7mP1vN4sL9tR6wY3bH0cJ5dF8gA2eK7uZ1nM4
+Copy key
+Copy as curl
+You won't see this again
+Lost it? Revoke this key and create a new one.
+I've copied it
+3 · Revoke
+Revoke “notes-agent”?
+Agents using
+zc_8fK2…
+lose access immediately. 1 live stream will be closed.
+Cancel
+Revoke key
+Design notes
+Purpose
+Make the one-time secret impossible to miss and revocation impossible to do by accident.
+Behavior
+Step 2 can't be dismissed by clicking outside or Esc — only the button.
+"Copy as curl" copies a ready-to-run stream command with the key inlined.
+Revoke shows how many live streams it will cut.
+Scope
+MVP. Claim U6.
+Implementation
+shadcn-svelte: Dialog, Field + Input, Button, Alert, Alert Dialog. skgo Form
+createKey
+returns the secret once in the form result; server stores SHA-256 hash and 8-char prefix. Secret:
+zc_
++ base62 of 32 random bytes. Command
+revokeKey(id)
+sets
+revoked_at
+and signals sessions to drop that key's subscribers.
+T6 · nlspec store/auth cells

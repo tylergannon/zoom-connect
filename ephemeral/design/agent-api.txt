@@ -1,0 +1,190 @@
+.doc { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 24px; align-items: start; }
+  .doc h3 { font-size: 16px; font-weight: 600; margin: 26px 0 8px; }
+  .doc h3:first-child { margin-top: 0; }
+  .doc p { margin: 0 0 10px; color: oklch(0.3 0 0); }
+  .ep td:first-child { white-space: nowrap; }
+  .method { font-family: var(--mono); font-size: 11px; font-weight: 600; background: var(--ok-soft); color: oklch(0.42 0.12 150); border-radius: 4px; padding: 1px 6px; margin-right: 6px; }
+  .toc { border-left: 1px solid var(--border); padding-left: 14px; font-size: 13px; display: grid; gap: 6px; color: var(--muted-foreground); }
+  .toc b { color: var(--foreground); font-weight: 600; }
+  .keypick { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 18px; background: var(--muted); }
+  @media (max-width: 1000px) { .doc { grid-template-columns: minmax(0, 1fr); } .toc { display: none; } }
+MVP
+Agent API guide
+An API that allows agents either to stream or to download the entire structured text data from a call — and to hear about every call live, using the user's API key.
+Zoom Connect
+Calls
+● 2
+API keys
+Agent API
+Admin
+Zoom connection
+Slack
+Later
+DK
+Dana Kim
+dana@acme.co
+Agent API
+Give your agent a key and one of these URLs.
+OpenAPI spec
+Examples use
+notes-agent · zc_8fK2…
+Secrets are never shown here; set
+ZC_KEY
+yourself.
+1. Hear about every call (live)
+One long-lived SSE connection. You get an event whenever a call you can see starts, is shared with you, or ends.
+curl
+-N -H
+"Authorization: Bearer $ZC_KEY"
+https://zc.acme.co/api/v1/stream
+event: call.started
+data: {
+"id"
+:
+"01K7F3Q8ZJ…"
+,
+"topic"
+:
+"Weekly product sync"
+,
+"url"
+:
+"https://zc.acme.co/calls/01K7F3Q8ZJ…"
+}
+event: call.ended
+data: {
+"id"
+:
+"01K7F3Q8ZJ…"
+,
+"status"
+:
+"stopped"
+}
+2. Follow one call
+Replays everything so far, then streams live. Each message's
+id
+is the event
+seq
+, so reconnecting with
+Last-Event-ID
+(or
+?from=
+) resumes with no gaps. Ends with
+event: end
+.
+curl
+-N -H
+"Authorization: Bearer $ZC_KEY"
+\
+  https://zc.acme.co/api/v1/calls/01K7F3Q8ZJ6Y4N2W9T5RXHM0VB/stream
+
+id: 412
+data: {
+"seq"
+:
+412
+,
+"ts"
+:
+1760550123456
+,
+"kind"
+:
+"transcript"
+,
+"participant"
+:{
+"id"
+:
+"16778240"
+,
+"name"
+:
+"Dana Kim"
+},
+"data"
+:{
+"text"
+:
+"let's ship it monday"
+,
+"lang"
+:
+"en"
+,
+"final"
+:
+true
+}}
+3. Download a whole call
+GET
+/api/v1/calls
+Calls you can see, newest first.
+?status=live
+GET
+/api/v1/calls/{id}
+Call metadata: topic, host, participants, status
+GET
+/api/v1/calls/{id}/events
+All structured events, NDJSON
+GET
+/api/v1/calls/{id}/transcript
+?format=txt|vtt|json
+GET
+/api/v1/calls/{id}/audio/{p}
+Per-participant Ogg/Opus
+Event kinds
+stream.started
+·
+stream.stopped
+·
+stream.interrupted
+·
+participant.joined
+·
+participant.left
+·
+speaker.active
+·
+transcript
+·
+chat
+Errors
+401
+missing/revoked key ·
+403
+your key's owner can't see that call ·
+404
+no such call
+On this page
+Hear about every call
+Follow one call
+Download a whole call
+Event kinds
+Errors
+Design notes
+Purpose
+Everything an agent author needs on one screen, with real call IDs and the user's own key names filled in.
+Behavior
+Key picker only changes the example labels; secrets are never re-shown.
+Every code block has a copy button (hover).
+Serve the same content as
+/api/v1/openapi.yaml
+and a plain
+/llms.txt
+so agents can read it themselves.
+Scope
+MVP. Claim U7 — "stream or download the entire structured text data".
+Audio endpoint is Post-MVP.
+Implementation
+shadcn-svelte: Code Block, Table, Select, Typography. Routes are Go
++server
+handlers behind bearer auth; event JSON is nlspec §5.1 unchanged. Moving nlspec's
+/meetings/…
+routes to
+/api/v1/calls/…
+and adding
+/api/v1/stream
+are listed as nlspec amendments.
+T12–T16 · nlspec §5.1, §5.6

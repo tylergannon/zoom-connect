@@ -5,6 +5,13 @@ and participant events to us over Realtime Media Streams (RTMS); we keep them
 and serve them to the company's people (web UI, Google sign-in restricted to
 one Google Apps domain) and to their agents (API keys, SSE, downloads).
 
+The current implementation is the local proof of concept Tyler requested:
+Google sign-in and Zoom calls are explicitly simulated, and meeting content
+uses local JSONL files under `ARCHIVE_DIR` rather than R2. The requirements
+below describe the eventual real integrations; do not present the demo as
+having completed them. API keys, sharing, access checks and SSE use the real
+Go handlers and Postgres. Slack and audio remain deferred.
+
 ## Read first
 
 - `nlspec.md` — the meeting pipeline: RTMS, session, archive, bucket layout,
@@ -45,8 +52,11 @@ deferred. Do not build deferred items without being asked.
 ## Layout
 
 - `cmd/rtmsrec/` — spike: raw RTMS recorder. Not production code.
-- The skgo application is not scaffolded yet. Create it with `skgo new` and
-  record the build gesture (Justfile) here once it exists.
+- `cmd/main.go`, `server.go` — the skgo application and server composition.
+- `internal/httpapi/`, `internal/store/` — Go endpoints and sqlc/pgx storage.
+- `web/` — SvelteKit pages and shadcn-svelte components.
+- Start Postgres with `docker compose up -d postgres`, then run `just dev`.
+  `just build` produces the standalone `bin/zoom-connect` application.
 
 ## Rules
 

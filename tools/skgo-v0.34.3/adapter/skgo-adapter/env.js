@@ -1,0 +1,575 @@
+/**
+ * The SSR bundle, built as a fourth environment of kit's own Vite build.
+ *
+ * skgo used to bundle the engine's JavaScript itself, with esbuild, which
+ * meant reimplementing the parts of kit's build that a server environment
+ * already does: the Svelte server compile, the TypeScript strip, the `$app/*`
+ * alias table, the twenty-three `__SVELTEKIT_*` defines and the epilogue that
+ * gives every remote function the `<hash>/<name>` id the browser addresses it
+ * by. Every one of those was a second answer to a question kit had already
+ * answered, and each could drift from kit's answer without saying so.
+ *
+ * Declaring an environment instead means kit compiles the engine's bundle the
+ * same way it compiles its own server: this file adds no compile step and no
+ * alias for anything `$app/*` names. What is left is the one thing skgo has to
+ * change — what `$app/server` means — and it stays a source-level substitution,
+ * which is only possible before kit's graph is linked.
+ *
+ * Kit's remote plugin emits one entry chunk per `.remote` module into every
+ * server environment (`exports/vite/index.js`, the `emitFile` at 686), which
+ * makes this environment a code-splitting build, and rolldown refuses `iife`
+ * for those. So the environment emits esm and a second `rolldown()` call over
+ * its entry chunk folds it into the one script Go evaluates. Kit's remote
+ * entries can share application modules with that entry, so the fold follows
+ * every imported emitted chunk while leaving unrelated entries behind.
+ */
+
+import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, realpathSync, rmSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+/**
+ * Rolldown, resolved from the app rather than from this package.
+ *
+ * A plain `import ... from 'vite/rolldown'` resolves beside this file, and this
+ * file is in `node_modules/@skgo/sveltekit-adapter`, whose own dependencies are not the
+ * app's. Two of them would be fatal even where both exist: kit checks its dev
+ * SSR environment with an `instanceof` against the project's resolved vite, so
+ * a build driven by a second copy carries classes from a different module realm
+ * and kit does not recognise them. The one rolldown that may build this app is
+ * the one the app's vite ships, and the app is where it is asked for — the same
+ * way kit's own internals are located, below.
+ *
+ * `process.cwd()` is the vite root: kit's build runs there, and the adapter
+ * already reads `skgo.remotes.json` out of it.
+ */
+const app = createRequire(join(process.cwd(), 'package.json'));
+
+/** @param {string} specifier */
+async function fromApp(specifier) {
+	try {
+		return await import(pathToFileURL(app.resolve(specifier)).href);
+	} catch (cause) {
+		throw new Error(
+			`skgo: the adapter builds the SSR bundle with the app's own vite, and ${specifier} ` +
+				`could not be resolved from ${process.cwd()}. Run the install first.`,
+			{ cause }
+		);
+	}
+}
+
+const { rolldown } = await fromApp('vite/rolldown');
+const { parseSync, transformSync } = await fromApp('vite/rolldown/experimental');
+const { loadEnv } = await fromApp('vite');
+/**
+ * The runtime JavaScript, as files on disk beside this one — the way kit's own
+ * adapters carry theirs (`adapter-node`, `adapter-vercel` and the rest locate a
+ * `files/` directory from `import.meta.url`). They used to be `String.raw`
+ * constants inside the adapter, which no editor, formatter or type checker
+ * could see into.
+ */
+const here = dirname(fileURLToPath(import.meta.url));
+const ENTRY = join(here, 'entry.js');
+const APP_SERVER = join(here, 'app-server.js');
+const PRERENDER_HELPER = '@skgo/sveltekit-adapter/prerender';
+const APP_PATHS = join(here, 'app-paths.js');
+const POLYFILL = join(here, 'polyfill.js');
+
+/**
+ * The target the environment is compiled to. es2022 keeps native private class
+ * fields; downlevelling them rewrites Svelte's server `Renderer` into WeakMap
+ * lookups and costs between 2x and 7x, measured. Anything lower is refused —
+ * the modules the engine's parser actually rejects are lowered one at a time
+ * below instead.
+ */
+export const SSR_TARGET = 'es2022';
+
+/**
+ * The namespace the environment's own virtual modules live in. `\0` is
+ * rollup's convention for an id no other plugin should touch.
+ */
+const PREFIX = '\0skgo:';
+
+/**
+ * The kit internals the entry reaches that no `$app/*` specifier names. They
+ * are absolute paths, so the bundle holds one instance of each — one installed
+ * transport, one devalue.
+ *
+ * realpath, because pnpm links the package: a module reached through the link
+ * looks for kit's own dependencies (devalue, cookie) beside the link instead of
+ * beside kit, and the app's node_modules has no such directory. Vite realpaths
+ * what its own resolver returns; an id handed back from `resolveId` is taken as
+ * given.
+ *
+ * @param {string} root the vite root
+ * @returns {Record<string, string>}
+ */
+function kitAliases(root) {
+	const kit = realpathSync(join(root, 'node_modules/@sveltejs/kit'));
+	const runtime = join(kit, 'src/runtime');
+	return {
+		// kit's real `$app/server`, which app-server.js re-exports everything
+		// it does not itself replace out of.
+		'skgo:kit/app-server': join(runtime, 'app/server/index.js'),
+		'skgo:kit/remote': join(runtime, 'app/server/remote/index.js'),
+		'skgo:kit/shared': join(runtime, 'shared.js'),
+		'skgo:kit/transport': join(runtime, 'app/internal/transport.js'),
+		'skgo:kit/serialize-data': join(runtime, 'server/page/serialize_data.js'),
+		// kit's own universal fetch, which the entry hands every universal load
+		// rather than keeping a second copy of its CORS, replay and header rules.
+		'skgo:kit/load-data': join(runtime, 'server/page/load_data.js'),
+		'skgo:kit/props': join(runtime, 'props.svelte.js'),
+		'skgo:kit/root': join(runtime, 'components/root.svelte'),
+		// kit's own `$app/paths` server implementation, which app-paths.js
+		// re-exports `resolve` and `asset` out of, and the pathname decoder kit's
+		// own `match` prepares its argument with.
+		'skgo:kit/paths-server': join(runtime, 'app/paths/server.js'),
+		'skgo:kit/url': join(kit, 'src/utils/url.js'),
+		// devalue resolved from kit rather than from the app: kit is what
+		// depends on it, and under pnpm the app's own node_modules has no such
+		// directory. The entry needs it directly for the one thing kit's
+		// `parse` cannot do — read a promise placeholder back.
+		'skgo:devalue': createRequire(join(kit, 'package.json')).resolve('devalue')
+	};
+}
+
+/**
+ * Whether a module is one of this package's own runtime files.
+ *
+ * @param {string} file
+ */
+function ours(file) {
+	const rel = relative(here, file);
+	return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+/** Whether a specifier names a package rather than a path or a virtual module.
+ *
+ * @param {string} id
+ */
+function bare(id) {
+	return !id.startsWith('.') && !id.startsWith('\0') && !id.startsWith('/') && !isAbsolute(id);
+}
+
+// A conservative prefilter: comments may separate an unsupported construct's
+// tokens. The syntax tree, not their spelling or surrounding text, decides.
+const MAY_NEED_LOWERING = /\b(?:async|await)\b/;
+
+/**
+ * The goja environment: the vite plugin that declares it, and the call that
+ * builds it and folds the result.
+ *
+ * They are one object because the plugin has to be handed to kit at
+ * construction time — kit reads `adapter.vite.plugins.post` while it is
+ * building its config — and the build cannot start until `adapt()` runs, which
+ * is the first moment the node table is known.
+ *
+ */
+export function gojaEnvironment() {
+	/** filled in by build(), read by the plugin's virtual modules */
+	const state = {
+		nodes: '',
+		hooks: '',
+		// vite's ViteBuilder. Its own types do not name it in a form a JSDoc
+		// annotation here can reach.
+		/** @type {any} */
+		builder: null
+	};
+	/** @type {Set<string>} the modules that had to be lowered, for the log */
+	const lowered = new Set();
+
+	const root = process.cwd();
+	const aliases = kitAliases(root);
+
+	/** @type {Record<string, () => string>} */
+	const sources = {
+		// The node table the bundle renders through and the app's universal
+		// hooks, both of which only exist once kit's build has finished.
+		'skgo:nodes': () => state.nodes,
+		'skgo:hooks': () => state.hooks,
+		// esm-env's DEV/BROWSER are vite conditions kit's server build resolves
+		// through package exports; this environment states them outright.
+		'skgo:esm-env': () => `export const DEV = ${!!process.env.SKGO_DEV_ORIGIN}; export const BROWSER = false;`,
+		// `get_hooks` carries `reroute` and nothing else the engine needs; Go
+		// does the routing.
+		'skgo:generated': () => 'export const get_hooks = () => ({});',
+		// The Goja renderer cannot call back into the build-time process owner.
+		// Keep this module inert so its Node process dependencies never enter the
+		// renderer bundle.
+		'skgo:prerender': () => 'export async function remoteInputs() { throw new Error("skgo: declared prerender inputs are build-only"); }',
+		// Neither kit nor Svelte can reach AsyncLocalStorage here, and neither
+		// needs to: the webcontainer flag in the banner selects Svelte's own
+		// supported fallback — a module-global render context and a serialised
+		// render queue — and flips the matching flag in kit.
+		'skgo:missing': () =>
+			'throw new Error("skgo: node:async_hooks is unavailable in the SSR engine");'
+	};
+
+	/** @type {import('vite').Plugin} */
+	const plugin = {
+		name: 'skgo-goja-environment',
+		apply: 'build',
+
+		/**
+		 * The environment itself. A server consumer, like kit's own `ssr`, so
+		 * that kit's `#app/*` imports resolve to their server variants; esm
+		 * because kit's remote plugin makes it a code-splitting build; nothing
+		 * external, because the engine has no module loader to reach anything
+		 * with.
+		 */
+		config() {
+			return {
+				environments: {
+					goja: {
+						define: process.env.SKGO_DEV_ORIGIN ? { __SVELTEKIT_DEV__: 'true', __SVELTEKIT_GLOBAL_NAME__: JSON.stringify('__sveltekit_dev') } : {},
+						consumer: 'server',
+						resolve: {
+							noExternal: true,
+							external: [],
+							// A server consumer gets Node builtins by default. This one
+							// executes in goja and has none: leaving them external can
+							// produce a successful build whose IIFE calls an undefined
+							// `node_module` global before the first render.
+							builtins: [],
+							// Deliberately neither `node` nor `browser`. Kit and Svelte's
+							// server entry points use their default exports, while an app
+							// dependency such as `yaml` can choose its portable default
+							// instead of a Node-only conditional export.
+							conditions: ['production', 'module', 'import', 'default']
+						},
+						build: {
+							outDir: GOJA_OUT,
+							emptyOutDir: false,
+							copyPublicDir: false,
+							manifest: false,
+							ssrEmitAssets: false,
+							emitAssets: false,
+							cssCodeSplit: false,
+							minify: false,
+							sourcemap: false,
+							target: SSR_TARGET,
+							rolldownOptions: {
+								// Vite otherwise gives every server consumer the Node
+								// platform, which may synthesize `createRequire` while
+								// linking a chunk shared with Kit's remote entry. The engine
+								// is a neutral JavaScript host, not Node.
+								platform: 'neutral',
+								input: { bundle: ENTRY },
+								preserveEntrySignatures: false,
+								output: {
+									format: 'esm',
+									entryFileNames: 'bundle.js',
+									assetFileNames: 'assets/[name][extname]',
+									codeSplitting: false
+								}
+							}
+						}
+					}
+				}
+			};
+		},
+
+		// Vite hands every buildApp hook its builder, and kit's adapter hook
+		// runs last (`order: 'post'`), so the builder is in hand by the time
+		// adapt() asks for the environment to be built.
+		buildApp: {
+			order: 'pre',
+			async handler(builder) {
+				state.builder = builder;
+			}
+		},
+
+		// Everything below is this environment's and no other's: kit's `ssr`
+		// build keeps kit's own `$app/server`, and its client build is
+		// untouched.
+		applyToEnvironment(environment) {
+			return environment.name === 'goja';
+		},
+
+		resolveId: {
+			order: 'pre',
+			async handler(id, importer) {
+				if (id === PRERENDER_HELPER) return PREFIX + 'skgo:prerender';
+				if (id in sources) return PREFIX + id;
+				if (id.startsWith(PREFIX)) return id;
+				if (id in aliases) return aliases[id];
+				// The two substitutions. Kit aliases `$app/server` and
+				// `$app/paths` to its own runtime modules; this gets there first,
+				// and only here.
+				if (id === '$app/server') return APP_SERVER;
+				if (id === '$app/paths') return APP_PATHS;
+				if (id === 'esm-env') return PREFIX + 'skgo:esm-env';
+				if (id === '<sveltekit:generated>') return PREFIX + 'skgo:generated';
+				if (id === 'node:async_hooks' || id === 'async_hooks') return PREFIX + 'skgo:missing';
+				// A bare specifier in one of this package's own runtime files —
+				// `svelte/server`, `@sveltejs/kit/internal/server` — names a
+				// package the app depends on and this one does not. Resolving it
+				// beside these files looks in node_modules/@skgo/sveltekit-adapter and
+				// finds nothing; the app is where kit and Svelte are installed,
+				// and it is the copy of each that the rest of this build already
+				// uses. So the app asks on the file's behalf, through vite's own
+				// resolver, which is the only thing here that knows the
+				// conditions this environment resolves under.
+				if (importer && ours(importer) && bare(id)) {
+					return this.resolve(id, join(root, 'package.json'), { skipSelf: true });
+				}
+				return null;
+			}
+		},
+
+		load: {
+			order: 'pre',
+			handler(id) {
+				// Go owns handle at runtime; this build-only hook has no engine code.
+				if (/\/src\/hooks\.server\.(?:ts|js)(?:\?|$)/.test(id)) return 'export {};';
+				if (/\/\.svelte-kit\/skgo-env-(?:values\.js|runtime\.json)(?:\?|$)/.test(id)) {
+					throw new Error('skgo: environment build inputs are private');
+				}
+				const environment = goEnvironmentModule(id);
+				if (environment !== null) return environment;
+				if (!id.startsWith(PREFIX)) return null;
+				const make = sources[id.slice(PREFIX.length)];
+				if (!make) throw new Error('skgo: no virtual module ' + id.slice(PREFIX.length));
+				return make();
+			}
+		},
+
+		/**
+		 * Per-module lowering, and the one module that cannot be bundled at
+		 * all. See engineTransform.
+		 */
+		transform: {
+			order: 'post',
+			handler(code, id) {
+				return engineTransform(code, id, { lowered });
+			}
+		}
+	};
+
+	/**
+	 * Builds the environment and folds it into the one script Go evaluates.
+	 *
+	 * The fold is a second `rolldown()` over the environment's own entry chunk.
+	 * It reaches that chunk and everything it imports, including chunks shared
+	 * with entries emitted by kit's remote plugin. Unrelated entry chunks are
+	 * left behind, and `iife` is legal because the fold itself has one entry.
+	 *
+	 * The polyfill is the fold's banner rather than a module of the bundle: in
+	 * the folded file kit's shared chunk evaluates before the entry body, so a
+	 * polyfill module would arrive after `new URL(...)` at kit's module scope.
+	 *
+	 * @param {{ nodes: string, hooks: string, log?: (message: string) => void }} generated
+	 * @param {string} outfile
+	 */
+	async function build({ nodes, hooks, log = () => {} }, outfile, builder) {
+		if (builder) state.builder = builder;
+		if (!state.builder) {
+			throw new Error(
+				"skgo: vite never handed the adapter its builder, so the goja environment cannot be built. The adapter's `vite.plugins.post` hook did not reach kit."
+			);
+		}
+		state.nodes = nodes;
+		state.hooks = hooks;
+
+		const environment = state.builder.environments.goja;
+		if (!environment) {
+			throw new Error(
+				'skgo: vite built no `goja` environment. The adapter declares one in a `config` hook; this build of vite did not take it.'
+			);
+		}
+
+		await state.builder.build(environment);
+		if (lowered.size) {
+			log(`skgo: lowered to es2017 for the engine's parser: ${lowered.size} module(s)`);
+		}
+
+		const chunk = resolve(root, environment.config.build.outDir, 'bundle.js');
+		if (!existsSync(chunk)) {
+			throw new Error(`skgo: the goja environment emitted no ${chunk}`);
+		}
+
+		const bundle = await rolldown({
+			input: chunk,
+			platform: 'neutral',
+			// `import.meta` cannot survive into an iife, and one reaches this
+			// graph: kit's `constants.js` exports `SRC_ROOT = import.meta.dirname`
+			// for the benefit of its own prerenderer, which does not run here.
+			// Saying so is what the previous build did too — esbuild's
+			// `supported: { 'import-meta': false }` rewrote it silently. Naming
+			// it keeps rolldown from warning about a rewrite that is the point.
+			transform: { define: { 'import.meta': '{}' } }
+		});
+		try {
+			await bundle.write({
+				dir: dirname(resolve(root, outfile)),
+				entryFileNames: basenameOf(outfile),
+				format: 'iife',
+				codeSplitting: false,
+				banner: readFileSync(POLYFILL, 'utf-8')
+			});
+		} finally {
+			await bundle.close();
+		}
+		rmSync(resolve(root, environment.config.build.outDir), { force: true, recursive: true });
+	}
+
+	return { plugin, build };
+}
+
+/**
+ * Where the environment's own output goes before it is folded. It is removed
+ * once the fold has read it; nothing downstream ever sees it.
+ */
+const GOJA_OUT = process.env.SKGO_DEV_DIR ? join(process.env.SKGO_DEV_DIR, 'goja-intermediate') : 'build/.goja';
+
+/** @param {string} file */
+function basenameOf(file) {
+	return file.slice(file.lastIndexOf('/') + 1);
+}
+
+/**
+ * The node table the bundle renders through: one static import per component
+ * kit's build produced, in the manifest's own node order.
+ *
+ * @param {string} root
+ * @param {Array<{ component: string | null, universal: string | null }>} nodes
+ */
+export function nodeTable(root, nodes) {
+	/** @type {string[]} */
+	const imports = [];
+	/** @type {string[]} */
+	const table = [];
+	const loads = [];
+	nodes.forEach((node, i) => {
+		if (node.universal) {
+			imports.push(`import * as U${i} from ${JSON.stringify(join(root, node.universal))};`);
+			loads.push(`() => U${i}.load`);
+		} else {
+			loads.push('undefined');
+		}
+		if (!node.component) {
+			table.push('undefined');
+			return;
+		}
+		imports.push(`import N${i} from ${JSON.stringify(join(root, node.component))};`);
+		table.push(`() => N${i}`);
+	});
+	return `${imports.join('\n')}\nexport const componentLoaders = [${table.join(', ')}];\nexport const universalLoaders = [${loads.join(', ')}];\n`;
+}
+
+/**
+ * The engine's per-module transform, used by the build.
+ *
+ * oxc's `target` is a single coarse ES version with no esbuild-style
+ * per-feature `supported` map, so lowering `for await` and async generators
+ * for the whole environment would also downlevel every private class field —
+ * the 2x-to-7x SSR_TARGET exists to avoid. Only the handful of modules that
+ * carry the two constructs goja's parser rejects are lowered, and none of them
+ * is under `svelte/src/internal/server/`.
+ *
+ * @param {string} code
+ * @param {string} id
+ * @param {{ lowered?: Set<string> }} options
+ */
+export function engineTransform(code, id, { lowered } = {}) {
+	let out = code;
+	// svelte/src/internal/server/crypto.js hides a `node:crypto` import behind
+	// a variable so bundlers cannot resolve it. goja rejects the syntax
+	// whether or not the branch is reached.
+	if (out.includes('obfuscated_import')) {
+		out = out.replace(
+			/=>\s*import\(([\s\S]*?)\)/,
+			'=> Promise.reject(new Error("skgo: no dynamic import in the SSR engine"))'
+		);
+	}
+	if (!needsLowering(out, id)) {
+		return out === code ? null : { code: out, map: null };
+	}
+	lowered?.add(id);
+	const result = transformSync(id.replace(/\0/g, '_'), out, { target: 'es2017' });
+	return { code: result.code, map: null };
+
+}
+
+// A text match is only a cheap prefilter. Svelte's renderer has a JSDoc
+// parameter named `render_async` immediately before `*/`, which looks like
+// an async generator to the old regexp. Lowering that comment rewrote all of its
+// private fields to WeakMaps and retained whole render trees in the engine.
+function needsLowering(code, id) {
+	if (!MAY_NEED_LOWERING.test(code)) return false;
+	const nodes = [parseSync(id.replace(/\0/g, '_'), code).program];
+	while (nodes.length) {
+		const node = nodes.pop();
+		if (!node || typeof node !== 'object') continue;
+		if (node.type === 'ForOfStatement' && node.await) return true;
+		if ((node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression') &&
+			node.async && node.generator) return true;
+		for (const value of Object.values(node)) {
+			if (value && typeof value === 'object') {
+				if (Array.isArray(value)) {
+					for (const child of value) nodes.push(child);
+				} else nodes.push(value);
+			}
+		}
+	}
+	return false;
+}
+
+export function goEnvironmentValues(output = 'build', privateValuesFile) {
+	let fields = [];
+	let values = {};
+	return {
+		plugin: {
+			name: 'skgo-environment-values',
+			configResolved: refresh,
+			load: { order: 'pre', handler(id) {
+				if (privateValuesFile && id.split('?')[0] === privateValuesFile && (this.environment.name === 'client' || this.environment.name === 'goja')) throw new Error('skgo: environment build inputs are private');
+			} },
+		},
+		refresh,
+		artifact() {
+			return { fields, static: Object.fromEntries(fields.filter((f) => f.static && f.name in values).map((f) => [f.name, values[f.name]])) };
+		}
+	};
+	function refresh(config) {
+		const schema = join(config.root, 'skgo.env.json');
+		if (!existsSync(schema)) { fields = []; values = {}; return; }
+		fields = JSON.parse(readFileSync(schema, 'utf8')).fields;
+		const setup = config.plugins.find((p) => p.name === 'vite-plugin-sveltekit-setup');
+		const kit = setup?.api?.options;
+		if (!kit) throw new Error('skgo: Kit environment configuration is unavailable');
+		const raw = loadEnv(config.mode, resolve(config.root, kit.env.dir), '');
+		// Pass only declared values; diagnostics never echo the full process env.
+		const input = Object.fromEntries(fields.filter((f) => f.name in raw).map((f) => [f.name, raw[f.name]]));
+		try {
+			values = JSON.parse(execFileSync('go', ['tool', 'skgo', 'env', '--schema', schema], {
+				cwd: config.root, input: JSON.stringify(input), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+			}));
+		} catch (error) {
+			throw new Error('skgo: Go environment validation failed\n' + String(error.stderr || error.message));
+		}
+		const file = privateValuesFile ?? join(config.root, '.svelte-kit/skgo-env-values.js');
+		mkdirSync(dirname(file), { recursive: true });
+		const source = 'export const values = ' + JSON.stringify(values) + ';\n';
+		if (!existsSync(file) || readFileSync(file, 'utf8') !== source) writeFileSync(file, source, { mode: 0o600 });
+		chmodSync(file, 0o600);
+	}
+
+}
+
+// Kit's public/private modules snapshot these properties during evaluation.
+// Go installs the snapshot before loading any application module. In particular,
+// importing Kit's original config here would re-run JavaScript validators and
+// bake the development/build environment into newly-created renderer runtimes.
+function goEnvironmentModule(id) {
+	if (!existsSync(join(process.cwd(), 'skgo.env.json'))) return null;
+	if (!/\/generated\/build\/env\/config\.js$/.test(id.replaceAll('\\', '/'))) return null;
+	return `const snapshot = globalThis.__skgo_environment || {};
+export const dynamic_private_env = snapshot.private || {};
+export const explicit_public_env = snapshot.public || {};
+export const rendered_env = snapshot.dynamicPublic || {};
+export const variables = {};
+export function set_env() {}`;
+}

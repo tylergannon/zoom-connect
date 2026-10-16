@@ -1,0 +1,143 @@
+.health { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .hcell { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+  .hcell span { font-size: 12px; color: var(--muted-foreground); display: block; }
+  .hcell b { display: flex; gap: 7px; align-items: center; font-weight: 600; margin-top: 2px; }
+  .cols { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .cols > div { display: grid; gap: 16px; min-width: 0; }
+  .step { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 9px 0; }
+  .step + .step { border-top: 1px solid var(--border); }
+  .step b { font-weight: 500; display: block; }
+  .step span { font-size: 12.5px; color: var(--muted-foreground); }
+  .step .auto { display: block; margin-top: 2px; font-size: 11px; color: var(--ok); font-weight: 600; }
+  .ring { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; margin-top: 1px; }
+  .ring svg { width: 12px; height: 12px; }
+  .ring.done { background: var(--ok); color: white; }
+  .ring.todo { border: 1.5px solid var(--input); }
+  .masked { display: flex; gap: 8px; align-items: center; }
+  .masked .input { flex: 1; }
+  .log td { font-size: 13px; padding: 9px 12px; }
+  .log td.mono { white-space: nowrap; }
+  @media (max-width: 1000px) { .cols { grid-template-columns: minmax(0, 1fr); } .health { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+MVP
+Zoom connection (admin)
+Whatever it is that gets Zoom able to look at our calls — configure and manage it in a screen within the web application.
+Zoom Connect
+Calls
+● 2
+API keys
+Agent API
+Admin
+Zoom connection
+Slack
+Later
+DK
+Dana Kim
+dana@acme.co
+Zoom connection
+How Zoom streams this account's meetings to Zoom Connect (RTMS).
+Re-check
+Status
+Connected
+Last webhook
+2 min ago
+Live streams
+2
+Calls this week
+31
+Setup checklist
+Done once, in the Zoom Marketplace and Zoom admin.
+Create a General App, user-managed, Private distribution
+marketplace.zoom.us → Develop → Build App
+Paste the webhook URL into Event Subscriptions
+Events:
+meeting.rtms_started
+,
+meeting.rtms_stopped
+,
+meeting.rtms_interrupted
+https://zc.acme.co/zoom/webhook
+✓ URL validation answered 14 Oct 09:12
+Add RTMS scopes
+meeting:read:meeting_transcript
+,
+meeting:read:meeting_chat
+✓ Seen in last handshake
+Enter app credentials below
+✓ Signature verified on last webhook
+Turn on “Share realtime meeting content with apps” and auto-start
+Zoom Admin → Account Settings → Zoom Apps. We can't check this — it shows up as calls arriving.
+Recent webhooks
+10:02:11
+rtms_started
+Weekly product sync
+Accepted
+09:58:40
+rtms_started
+Acme × Northwind kickoff
+Accepted
+09:47:02
+rtms_stopped
+Hiring sync — backend
+Accepted
+08:13:55
+rtms_started
+—
+Bad signature
+App credentials
+From the Zoom app's App Credentials and Event Subscriptions pages.
+Client ID
+xQ7mP1vN4sL9tR6w
+Client secret
+••••••••••••3bH0
+Replace
+Webhook secret token
+••••••••••••c9Kd
+Set by environment
+ZOOM_WEBHOOK_SECRET
+is set on the server, so it can't be changed here.
+Save credentials
+What to capture
+Least capture: only what's switched on is requested from Zoom.
+Transcript
+Zoom's live transcription
+Chat
+Public (“Everyone”) chat only
+Audio
+Per-participant Opus; needs
+meeting_audio
+scope
+Shared media
+Screen share and files
+Admins
+Can see this screen and the Slack screen.
+DK
+Dana Kim
+ADMIN_EMAILS
+MR
+Marcus Reyes
+ADMIN_EMAILS
+Design notes
+Purpose
+One place to set up and keep an eye on the Zoom side, so nobody needs shell access to rotate a secret or find the webhook URL.
+Behavior
+Checklist ticks itself when the server has evidence (validation answered, signature verified, scopes seen); the account-setting step can't be verified and stays manual.
+Secrets are write-only: after save, only the last 4 characters show. Env vars win and render read-only.
+Rejected webhooks (bad signature, stale timestamp) surface in the log — the most common setup failure.
+Non-admins never see the Admin sidebar group; the route 404s for them.
+Scope
+MVP. Claim U9.
+Audio and shared-media capture are Post-MVP.
+Admin list is read-only from
+ADMIN_EMAILS
+(open question Q1).
+Implementation
+shadcn-svelte: Card, Field, Input, Input Group, Switch, Badge, Table, Button. Credentials in a
+settings
+table, encrypted with a key derived from
+SESSION_SECRET
+(or a dedicated
+SETTINGS_KEY
+). zoomhook keeps a small ring buffer of recent deliveries + outcomes for the log. Capture switches feed the
+want
+set in the RTMS client (nlspec rtms cell).
+T7 · T17 · T18 · T19 · nlspec C3

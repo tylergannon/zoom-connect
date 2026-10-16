@@ -1,0 +1,49 @@
+.empty { display: grid; place-items: center; text-align: center; padding: 64px 20px; }
+  .empty .ic { width: 48px; height: 48px; border-radius: 12px; background: var(--muted); display: grid; place-items: center; margin: 0 auto 14px; }
+  .empty .ic svg { width: 22px; height: 22px; color: var(--muted-foreground); }
+  .empty h3 { margin: 0; font-size: 18px; font-weight: 600; }
+  .empty p { margin: 6px auto 18px; color: var(--muted-foreground); max-width: 44ch; }
+  .people { display: inline-flex; flex-direction: column; gap: 6px; text-align: left; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 18px; }
+  .people div { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+MVP
+No access to a call
+What a signed-in coworker sees when they open a call link they weren't in and nobody has shared with them — and what an unknown call ID looks like.
+Valid call, no access
+You weren't in this call
+Only people who were in the call, or that someone in it has shared it with, can see it. Ask one of them to share it with you.
+MR
+Marcus Reyes
+(host)
+DK
+Dana Kim
+PS
+Priya Shah
+Back to calls
+Ask in Slack
+Unknown call ID (404)
+Call not found
+Check the link. Call links look like
+/calls/01K7F1B2…
+Back to calls
+Design notes
+Purpose
+A shared link opened by the wrong person should explain the rule and point to who can fix it, not just 403.
+Behavior
+Lists org participants (names only — no title, no transcript) so the viewer knows whom to ask. Decide whether even names leak too much; the alternative is the host only.
+Signed-out visitors go to Sign in first, then land here or on the call.
+API returns
+403
+for no access and
+404
+for unknown ID. If we'd rather not confirm a call exists, both become 404.
+Scope
+MVP. Claims U3, U8.
+"Ask in Slack" is Post-MVP
+(Slack integration).
+Implementation
+shadcn-svelte: Empty, Avatar, Button. Page server load throws
+error(403, {participants})
+; rendered by
++error.svelte
+.
+T3 · T5

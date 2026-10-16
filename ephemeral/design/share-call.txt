@@ -1,0 +1,73 @@
+.combo { position: relative; }
+  .combo-list { border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 10px 30px rgb(0 0 0 / .1); padding: 4px; margin-top: 6px; background: var(--popover); }
+  .opt { display: flex; gap: 10px; align-items: center; padding: 7px 8px; border-radius: 6px; font-size: 13px; }
+  .opt.hl { background: var(--accent); }
+  .opt .nm { min-width: 0; flex: 1; }
+  .opt .nm span { color: var(--muted-foreground); font-size: 12px; display: block; }
+  .opt .tag { font-size: 12px; color: var(--muted-foreground); }
+  .acc { display: flex; gap: 10px; align-items: center; padding: 8px 0; }
+  .acc .nm { flex: 1; min-width: 0; font-size: 13px; }
+  .acc .nm span { color: var(--muted-foreground); font-size: 12px; display: block; }
+  .toasts { display: flex; justify-content: flex-end; padding: 0 20px 20px; background: oklch(0.145 0 0 / .45); }
+MVP
+Share a call
+Anyone who was in a given call can share it with anyone in the organization who was not in the call. Sharing turns into a link to copy and send to a coworker, plus whatever records make that person able to see it.
+Share “Design review: agent API”
+People at acme.co you add here can open this call and its transcript, now and later.
+jor
+JL
+Jordan Lee
+jordan@acme.co
+Add
+JR
+Jo Rivera
+jo@acme.co · hasn't signed in yet
+Add
+People with access
+MR
+Marcus Reyes
+Host · participant
+Participant
+DK
+Dana Kim (you)
+Participant
+Participant
+LP
+Leo Park
+Shared by you · 2 days ago
+Remove
+Link
+https://zc.acme.co/calls/01K7F1B2M4D8C6Q0R3S5T7V9WX
+Copy
+The link only opens for participants and people added above. Anyone else at acme.co sees “No access”.
+Done
+Add & copy link
+Jordan Lee can now see this call
+Link copied to clipboard
+Design notes
+Purpose
+Let a participant hand a call to a coworker who wasn't there. The link is the call's own URL; the share record is what opens it.
+Behavior
+Combobox searches people who have signed in; typing a full
+@acme.co
+address works for someone who hasn't signed in yet — the share waits for their first sign-in.
+Primary action adds the person
+and
+copies the link, since the next step is always "paste it to them".
+Participants can't be removed. A share can be removed by whoever granted it.
+Grantees see this dialog read-only (no Add) — see open question Q2.
+Scope
+MVP. Claim U8. Emailing/Slacking the link automatically is
+Post-MVP
+(Slack integration).
+Implementation
+shadcn-svelte: Dialog, Combobox (Command + Popover), Avatar, Badge, Button, Input Group, Separator, Sonner toast. skgo Command
+shareCall(callId, email)
+inserts
+shares(call_id, grantee_email, grantee_user_id?, granted_by)
+; refuses unless caller is a participant and email is in
+ALLOWED_DOMAIN
+. Refreshes the call's access query. Live grantees get a
+call.shared
+event on their announcement stream.
+T3 · T5 · T16
