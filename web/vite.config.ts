@@ -5,6 +5,9 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, lazyPlugins } from "vite-plus";
 
 export default defineConfig({
+  server: {
+    allowedHosts: ["amritanandamayi.local"],
+  },
   fmt: {},
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
