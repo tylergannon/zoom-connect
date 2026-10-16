@@ -1,0 +1,159 @@
+.call-head { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 16px; }
+  .call-head h2 { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; margin: 0; }
+  .call-sub { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 6px; color: var(--muted-foreground); font-size: 13px; }
+  .call-sub span { display: inline-flex; align-items: center; gap: 5px; }
+  .call-sub svg { width: 14px; height: 14px; }
+  .dl-wrap { position: relative; }
+  .menu { position: absolute; right: 0; top: 42px; z-index: 2; width: 270px; background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 10px 30px rgb(0 0 0 / .12); padding: 4px; }
+  .menu .mi { display: flex; gap: 10px; align-items: center; padding: 7px 9px; border-radius: 6px; font-size: 13px; }
+  .menu .mi svg { width: 15px; height: 15px; color: var(--muted-foreground); }
+  .menu .mi .ext { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted-foreground); }
+  .menu .mi.hl { background: var(--accent); }
+  .menu .ml { font-size: 11px; font-weight: 600; color: var(--muted-foreground); padding: 6px 9px 2px; }
+  .menu .msep { height: 1px; background: var(--border); margin: 4px -4px; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .stat span { font-size: 12px; color: var(--muted-foreground); }
+  .stat b { display: block; font-size: 20px; font-weight: 650; letter-spacing: -0.02em; }
+  .call-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+  .tx-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+  .tx-bar .input { width: min(100%, 240px); height: 32px; }
+  .turn { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; padding: 10px 18px; }
+  .turn .who { display: flex; gap: 8px; align-items: baseline; }
+  .turn .who b { font-weight: 600; }
+  .turn .who time { font-size: 12px; color: var(--muted-foreground); font-family: var(--mono); }
+  .turn p { margin: 2px 0 0; }
+  mark { background: oklch(0.93 0.1 95); border-radius: 3px; padding: 0 2px; }
+  .sys { display: flex; align-items: center; gap: 10px; color: var(--muted-foreground); font-size: 12px; padding: 6px 18px 14px; }
+  .sys::before, .sys::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .talk { display: grid; gap: 10px; }
+  .talk-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) 40px; gap: 10px; align-items: center; font-size: 13px; }
+  .bar { height: 6px; border-radius: 999px; background: var(--muted); overflow: hidden; margin-top: 4px; }
+  .bar i { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
+  .acc { display: flex; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; }
+  .acc .badge { margin-left: auto; }
+  @media (max-width: 1000px) { .call-body { grid-template-columns: minmax(0, 1fr); } .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+MVP
+Finished call
+After the call ends, the same URL shows the finished transcript. People download it; agents download the entire structured text data.
+Zoom Connect
+Calls
+● 2
+API keys
+Agent API
+Admin
+Zoom connection
+Slack
+Later
+DK
+Dana Kim
+dana@acme.co
+Calls
+Design review: agent API
+Ended
+Today 11:00 – 11:42
+Host Marcus Reyes
+01K7F1B2M4D8C6Q0R3S5T7V9WX
+Copy link
+Download
+Transcript
+Plain text
+.txt
+Subtitles (WebVTT)
+.vtt
+Structured events
+.json
+Audio by participant
+.ogg
+Share
+Duration
+42 min
+Participants
+4
+Transcript lines
+612
+Chat messages
+9
+Transcript
+Chat
+9
+Shared media
+SSE
+3 of 7
+MR
+Marcus Reyes
+00:02
+Goal for today: agree the shape of the agent API so Priya can start on the docs.
+DK
+Dana Kim
+03:40
+Two modes. Agents either follow a call over
+SSE
+, or pull the whole thing as JSON when it's over.
+PS
+Priya Shah
+04:12
+And a single
+SSE
+connection that tells an agent whenever a new call starts that it can see?
+MR
+Marcus Reyes
+04:30
+Yes —
+/api/v1/stream
+. Same key, same visibility as the person who made the key.
+11:42 · Call ended
+Talk time
+MR
+Marcus Reyes
+18m
+DK
+Dana Kim
+12m
+PS
+Priya Shah
+8m
+SO
+Sam Ortiz (guest)
+3m
+Who can see this
+MR
+Marcus Reyes
+Participant
+DK
+Dana Kim (you)
+Participant
+PS
+Priya Shah
+Participant
+JL
+Jordan Lee
+Shared by you
+Sam Ortiz is a guest outside acme.co and has no access.
+Agent download
+curl
+-H
+"Authorization: Bearer $ZC_KEY"
+\
+".../calls/01K7F1B2…/transcript?format=json"
+Design notes
+Purpose
+Read, search and download a finished call; see who has access and share it further.
+Behavior
+Same URL and layout as live; header badge changes LIVE → Ended / Interrupted.
+In-transcript search highlights and steps through matches (client-side; no server search).
+Download menu: txt, vtt, json. Clicking a timestamp copies a deep link
+#t=04:12
+.
+"Who can see this" lists participants and grantees; it's the same list the Share dialog edits.
+Scope
+MVP. Claims U5, U7, U8.
+Audio download and Shared media are Post-MVP
+(U12, nlspec C8). Talk time is cheap (sum of transcript durations) but optional.
+Implementation
+shadcn-svelte: Dropdown Menu, Tabs, Input, Card, Avatar, Badge, Progress (talk bars), Separator, Code Block. Server load reads events from the archive (R2) via
+GET /calls/{id}/events
+semantics; downloads hit
+/api/v1/calls/{id}/transcript?format=txt|vtt|json
+with the session cookie. Search is client-side over loaded events.
+T11 · T15 · nlspec C2, C9

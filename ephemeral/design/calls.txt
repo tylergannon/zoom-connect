@@ -1,0 +1,112 @@
+.live-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 26px; }
+  .live-card { border-color: oklch(0.88 0.06 25); background: linear-gradient(180deg, var(--live-soft), var(--background) 70%); }
+  .live-card .card-c { display: grid; gap: 12px; }
+  .live-top { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .live-card h3 { margin: 0; font-size: 16px; font-weight: 600; }
+  .live-line { font-size: 13px; color: oklch(0.35 0 0); border-left: 2px solid var(--border); padding-left: 10px; }
+  .live-line b { font-weight: 600; }
+  .live-meta { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted-foreground); }
+  .live-meta span { display: inline-flex; gap: 5px; align-items: center; }
+  .live-meta svg { width: 14px; height: 14px; }
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .toolbar .input { width: min(100%, 280px); }
+  .section-title { font-size: 15px; font-weight: 600; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .t-title b { font-weight: 550; display: block; }
+  .t-title span { font-size: 12px; color: var(--muted-foreground); }
+  @media (max-width: 900px) { .live-grid { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 640px) { .col-hide { display: none; } }
+MVP
+Calls home
+Once in, you see any call you were in, plus calls shared with you. Calls happening right now are at the top and open straight into the live view.
+Zoom Connect
+Calls
+● 2
+API keys
+Agent API
+Admin
+Zoom connection
+Slack
+Later
+DK
+Dana Kim
+dana@acme.co
+Calls
+Calls you were in or that were shared with you.
+Live now
+Weekly product sync
+LIVE 23:41
+Priya Shah:
+if the webhook lands before the socket opens we still have the 60 second buffer…
+DK
+PS
+MR
++2
+5 in call
+2 agents listening
+Acme × Northwind kickoff
+LIVE 04:12
+Leo Park:
+great, so first thing is getting your team into the shared channel
+LP
+JL
+SO
+3 in call
+Shared with you by Leo
+All
+48
+I was in
+41
+Shared with me
+7
+Search by title or person
+Call
+People
+Duration
+Access
+Design review: agent API
+Today · 11:00
+DK
+MR
+PS
+42 min
+Participant
+Hiring sync — backend
+Today · 09:30
+DK
+JL
+18 min
+Participant
+Customer call: Globex renewal
+Yesterday · 16:00
+LP
++3
+55 min
+Shared by Leo
+Infra standup
+Yesterday · 10:00
+DK
+MR
+12 min
+Participant
+1:1 Dana / Marcus
+Mon 13 Oct · 15:00
+DK
+MR
+30 min
+Interrupted
+Row menu: Open · Copy link · Share… · Download transcript
+Design notes
+Purpose
+Home after sign-in. Answers "what's happening now?" and "find that call I was in".
+Behavior
+Live cards appear within seconds of a call connecting and show the latest transcript line, ticking duration, and how many agents are subscribed.
+A live card disappears into the table when the call ends.
+Tabs filter by access reason. Search is on title and participant name.
+Empty state: "No calls yet. Calls appear here when Zoom Connect hears one you're in."
+Scope
+MVP. Claims U3, U4, U8. Search can ship as title-only first.
+Implementation
+shadcn-svelte: Sidebar, Card, Badge, Tabs, Input, Table (Data Table later), Avatar, Dropdown Menu, Empty. Go server load lists from the Postgres call index filtered by participant/share (T3, T9). Live cards subscribe to the user-scoped announcement stream (same events as
+GET /api/v1/stream
+, T16) via an skgo LiveQuery.
+T3 · T9 · T16

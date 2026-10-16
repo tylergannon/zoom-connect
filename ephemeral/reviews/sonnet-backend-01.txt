@@ -1,0 +1,25 @@
+I've finished reading the backend and checked the admin Zoom settings and SSE announcement behavior against how the web client uses them. Here are the findings.
+
+## Material findings
+
+**1. Saved Zoom client ID and secret suffix never come back in the shape the UI reads.**
+- **Where:** `internal/httpapi/share_admin.go:130-137` (GET) and `:174-176` (POST).
+- **Trigger:** An admin saves a client ID or secret on `/admin/zoom`, then reloads or clicks Re-check.
+- **Effect:** `saveZoomSettings` stores `client_id` and `client_secret_suffix` as top-level keys in the settings JSON. `zoomSettings` merges them over the default map at the top level too. The client reads `settings.credentials.client_id` and `settings.credentials.client_secret_suffix` (`web/src/routes/admin/zoom/+page.svelte:16` and `:59`). The nested `credentials` object keeps its empty defaults. So the Client ID field comes back blank after every save. The "Saved ••••xxxx" hint never appears. The saved values look lost. The fix is to store and merge them under `credentials`.
+- **Related:** the POST response (`prev`) has a different shape from the GET response. The `last_webhook` field is always `nil`.
+
+**2. The announcements stream replays every existing live or shared call as a new event on each connect.**
+- **Where:** `internal/httpapi/share_admin.go:275-304`. `poll(initial)` ignores `initial`, and `seen` starts empty.
+- **Trigger:** Any client opens `/api/stream` or `/api/v1/stream`. This includes the `/calls` page on every load or reconnect, and an agent running `curl -N`.
+- **Effect:** On the first poll, every accessible live call fires `call.started`. Every shared call fires `call.shared`, including old shares on stopped calls. With the seed data, a user such as Dana gets a burst of stale announcements on connect. Agents will see "new call" events for calls that started long ago. The first poll should populate `seen` silently.
+
+**3. Duplicate sequence numbers are possible when two events are emitted for the same call at once.**
+- **Where:** `internal/httpapi/server.go:333-338` and `internal/httpapi/hub.go:99-103`.
+- **Trigger:** `emit` calls `next()` and then `append()` without holding the lock across both. The 12-second simulator can run at the same moment as an admin demo event or a stop.
+- **Effect:** Two events can get the same `seq`. `Last-Event-ID` and `from=` replay assume `seq` is unique and monotonic, so a client can skip or de-duplicate one of them. `UpdateCallSeq` can also move `last_seq` backwards. The window is narrow in the demo.
+
+## Limits of review
+- I read the code only. I did not run Postgres or the tests.
+- I did not review the generated sqlc code beyond the queries.
+- I did not find access-control leaks in the call, events, stream, transcript or sharing routes. Each one goes through `authorizedCall`. The SSE stream re-checks session or key validity and access every 3 seconds. Shares can only be removed by the person who granted them.
+- The `meeting.rtms_stopped` webhook matches `calls.id` against the Zoom meeting UUID. That never matches demo call IDs. I treated this as out of scope because real Zoom is not required for the POC.

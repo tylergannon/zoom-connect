@@ -1,3 +1,8 @@
-.env
-recordings/
+/.env
+/recordings/
 /rtmsrec
+/data/
+/bin/
+/web/build/
+/web/.svelte-kit/
+/web/node_modules/

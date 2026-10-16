@@ -1,0 +1,52 @@
+.auth { background: radial-gradient(1200px 400px at 50% -10%, oklch(0.95 0.02 260), var(--background)); padding: 56px 20px 64px; display: grid; place-items: center; }
+  .auth .card { width: min(100%, 380px); text-align: center; }
+  .auth .brand-mark { width: 40px; height: 40px; border-radius: 11px; margin: 0 auto 14px; }
+  .auth .brand-mark svg { width: 22px; height: 22px; }
+  .auth h3 { font-size: 20px; margin: 0; letter-spacing: -0.02em; }
+  .auth .sub { color: var(--muted-foreground); margin: 6px 0 22px; }
+  .auth .gbtn svg { width: 18px; height: 18px; }
+  .auth .fine { font-size: 12px; color: var(--muted-foreground); margin: 16px 0 0; }
+  .auth .alert { text-align: left; margin-bottom: 18px; }
+MVP
+Sign in with Google
+Login with Google only, and only from the organization's Google Apps domain (given in an environment variable).
+Default
+Zoom Connect
+Transcripts of the calls you were in — live and afterward.
+Continue with Google
+Only
+@acme.co
+accounts can sign in.
+Wrong domain (403)
+Zoom Connect
+Transcripts of the calls you were in — live and afterward.
+That account can't sign in
+sam@gmail.com
+is not an @acme.co Google account. Choose your work account.
+Use a different Google account
+Design notes
+Purpose
+The only way in. One button; no email/password, no other providers.
+Behavior
+Opening a call link while signed out lands here, then returns to that call after sign-in.
+Wrong domain shows the refused email and offers account switching (
+prompt=select_account
+).
+Domain text comes from
+ALLOWED_DOMAIN
+.
+Scope
+MVP. Claims U1, U2.
+Implementation
+shadcn-svelte: Card, Button (outline, lg), Alert (destructive). Google OIDC via skgo; accept only if
+email_verified
+and ID-token
+hd == ALLOWED_DOMAIN
+(the
+hd
+login hint is not trusted). Upsert
+users
+row on success. Preserve
+?next=/calls/{id}
+through the OAuth round trip.
+T1 · T2

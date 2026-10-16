@@ -1,0 +1,279 @@
+{
+  "createdAt": "2026-10-16T03:46:56.961872+00:00",
+  "eventCursor": "906",
+  "id": "f6dae37a-040f-401a-b29c-b015a651b9af",
+  "name": "Zoom Connect",
+  "orderHash": "1ca9a0f77780",
+  "shared": false,
+  "slugCount": 14,
+  "slugs": [
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "d68de16f-b417-455d-88f1-e38f1e7e45de",
+      "position": 0,
+      "slug": "scope-map",
+      "tags": [
+        "overview",
+        "mvp"
+      ],
+      "title": "Scope & MVP map",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "35ab01910735"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "cc7a3254-da5d-4434-ba9e-c0a0fa8fbccb",
+      "position": 1,
+      "slug": "sign-in",
+      "tags": [
+        "ui",
+        "mvp",
+        "auth"
+      ],
+      "title": "Sign in with Google",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "887d0cda78f3"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "d8f48dfc-f69d-496f-911b-8b7f521d0ea0",
+      "position": 2,
+      "slug": "calls",
+      "tags": [
+        "ui",
+        "mvp",
+        "calls"
+      ],
+      "title": "Calls home",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "e50818860a7f"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "9185e9d2-2f7d-44da-9fb2-8ff0fc242525",
+      "position": 3,
+      "slug": "call-live",
+      "tags": [
+        "ui",
+        "mvp",
+        "calls",
+        "sse"
+      ],
+      "title": "Live call",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "0ef32946649f"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "91fd0ae7-9188-4f1d-b090-ce7ea1fe08c9",
+      "position": 4,
+      "slug": "call-finished",
+      "tags": [
+        "ui",
+        "mvp",
+        "calls"
+      ],
+      "title": "Finished call",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "7a4f7c430316"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "6e9d2a9b-9ee5-4c44-9e10-7b9d71d5de97",
+      "position": 5,
+      "slug": "share-call",
+      "tags": [
+        "ui",
+        "mvp",
+        "sharing"
+      ],
+      "title": "Share a call",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "0783404fcf30"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "d44c618c-79b0-4d1d-8afa-feb269749f9b",
+      "position": 6,
+      "slug": "call-no-access",
+      "tags": [
+        "ui",
+        "mvp",
+        "sharing"
+      ],
+      "title": "No access to a call",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "80c12f8b7698"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "32dbac84-1369-456b-a7da-ca2fad112d76",
+      "position": 7,
+      "slug": "api-keys",
+      "tags": [
+        "ui",
+        "mvp",
+        "api-keys"
+      ],
+      "title": "API keys",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "6063e05ad11f"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "d4a75707-d88b-4cbf-8b8f-174aab25a157",
+      "position": 8,
+      "slug": "api-key-dialogs",
+      "tags": [
+        "ui",
+        "mvp",
+        "api-keys"
+      ],
+      "title": "Create & revoke API key",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "b30e5093411d"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "3d8d8fde-4930-44b8-852b-2b2843638631",
+      "position": 9,
+      "slug": "agent-api",
+      "tags": [
+        "ui",
+        "mvp",
+        "api"
+      ],
+      "title": "Agent API guide",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "843d6c990e54"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "ae9c8545-6a7b-414b-a699-2a89a4e540d7",
+      "position": 10,
+      "slug": "zoom-connection",
+      "tags": [
+        "ui",
+        "mvp",
+        "admin",
+        "zoom"
+      ],
+      "title": "Zoom connection (admin)",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "516ef248a440"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "be674fc6-fa0b-4e1c-9d83-ee4f8a6e5251",
+      "position": 11,
+      "slug": "account",
+      "tags": [
+        "ui",
+        "mixed",
+        "account"
+      ],
+      "title": "Account & notifications",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "a1e7d503e0e9"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "d5953492-8f22-4619-b08c-49f6a0f8eebe",
+      "position": 12,
+      "slug": "slack-integration",
+      "tags": [
+        "ui",
+        "deferred",
+        "slack"
+      ],
+      "title": "Slack integration (admin)",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "7679fab2ce22"
+    },
+    {
+      "changeNote": "Proposed Zoom Connect UI screens with design notes and MVP/deferred marking",
+      "id": "552a2466-9d69-4690-a5d5-aadb3c783de5",
+      "position": 13,
+      "slug": "slack-dms",
+      "tags": [
+        "ui",
+        "deferred",
+        "slack"
+      ],
+      "title": "Slack DMs",
+      "updatedAt": "2026-10-16T03:56:39.967509+00:00",
+      "updatedBy": {
+        "agentName": "Zoom Connect UI design",
+        "keyId": "jnonflfvzcpmfinm",
+        "label": "pdfs"
+      },
+      "version": "5360a8b498f7"
+    }
+  ],
+  "updatedAt": "2026-10-16T03:56:39.967509+00:00"
+}

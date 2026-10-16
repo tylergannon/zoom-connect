@@ -1,0 +1,67 @@
+.slack { background: #fff; font-family: "Lato", "Geist", system-ui, sans-serif; font-size: 15px; color: #1d1c1d; }
+  .slack-top { display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-bottom: 1px solid #e8e8e8; font-weight: 700; }
+  .slack-top .app { font-size: 11px; font-weight: 600; background: #e8e8e8; color: #616061; padding: 1px 4px; border-radius: 3px; }
+  .msg { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 10px; padding: 14px 20px; }
+  .msg + .msg { border-top: 1px solid #f2f2f2; }
+  .bot { width: 36px; height: 36px; border-radius: 6px; background: var(--primary); color: white; display: grid; place-items: center; }
+  .bot svg { width: 18px; height: 18px; }
+  .msg .hd { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .msg .hd b { font-weight: 800; }
+  .msg .hd .app { font-size: 10px; font-weight: 600; background: #e8e8e8; color: #616061; padding: 0 3px; border-radius: 3px; }
+  .msg .hd time { font-size: 12px; color: #616061; }
+  .msg p { margin: 4px 0 0; }
+  .att { border-left: 4px solid #ddd; padding: 6px 12px; margin-top: 8px; }
+  .att.live { border-color: oklch(0.63 0.21 25); }
+  .att.done { border-color: oklch(0.6 0.15 150); }
+  .att b { display: block; }
+  .att span { color: #616061; font-size: 14px; }
+  .sbtns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .sbtn { border: 1px solid #ccc; border-radius: 4px; padding: 4px 12px; font-size: 14px; font-weight: 700; }
+  .sbtn.primary { background: #007a5a; border-color: #007a5a; color: white; }
+Deferred · non-MVP
+Slack DMs
+What each organization member of a call receives in Slack: a link when the call begins, and a link to the finished call when it's done.
+Zoom Connect
+APP
+Zoom Connect
+APP
+10:02 AM
+You're in a call that's being transcribed.
+🔴 Weekly product sync — live now
+Hosted by Dana Kim · Marcus, Priya and 2 others
+Open live transcript
+Share…
+Zoom Connect
+APP
+10:44 AM
+The transcript is ready.
+✅ Weekly product sync — 42 min
+612 transcript lines · 9 chat messages · 5 people
+Open transcript
+Download .txt
+Zoom Connect
+APP
+2:15 PM
+Leo Park
+shared a call with you.
+Customer call: Globex renewal
+Yesterday · 55 min
+Open transcript
+Design notes
+Purpose
+Put the call link where people already are, at the two moments it's useful: start and finish.
+Behavior
+Only org members of the call (matched by email) get DMs; guests never do.
+Late joiners get the start DM when they join; nobody gets it twice per call.
+If the call was interrupted, the finish DM says “ended unexpectedly — partial transcript”.
+Buttons are plain links to the call URL; sign-in still applies.
+Scope
+Post-MVP.
+Claims U10, U11 (and the share DM from T22).
+Implementation
+Slack Block Kit: section + context + actions (URL buttons, no interactivity endpoint needed). Dedupe on
+(call_id, user_id, kind)
+in a
+slack_notifications
+table.
+T21

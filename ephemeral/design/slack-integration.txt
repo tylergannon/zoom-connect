@@ -1,0 +1,86 @@
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .cols > div { display: grid; gap: 16px; min-width: 0; }
+  .ws { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .ws .logo { width: 40px; height: 40px; border-radius: 10px; background: oklch(0.35 0.12 320); color: white; display: grid; place-items: center; font-weight: 700; }
+  .ws .grow { flex: 1; min-width: 0; }
+  .ws b { display: block; }
+  .scopes { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .match td { font-size: 13px; padding: 9px 12px; }
+  @media (max-width: 1000px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+Deferred · non-MVP
+Slack integration (admin)
+A Slack app that integrates with Zoom Connect: when a new call begins, a DM with a link goes to each member of the call who is part of the organization; when it's done, each gets a link to the finished call.
+Zoom Connect
+Calls
+● 2
+API keys
+Agent API
+Admin
+Zoom connection
+Slack
+Later
+DK
+Dana Kim
+dana@acme.co
+Slack
+DM people links to their calls.
+Send me a test DM
+Workspace
+A
+Acme
+acme.slack.com · installed by Dana Kim, 3 Nov
+Disconnect
+chat:write
+im:write
+users:read
+users:read.email
+What gets sent
+Defaults for everyone; people can turn each off for themselves.
+Call started
+DM each org member in the call; late joiners get it when they join
+Call finished
+DM each org member who was in the call
+Call shared with you
+DM the person it was shared with
+People
+Matched by email between Google and Slack.
+Person
+Slack
+Dana Kim
+@dana
+Marcus Reyes
+@marcus
+Priya Shah
+@priya.s
+Jordan Lee
+No Slack user with jordan@acme.co
+Design notes
+Purpose
+Install the Slack app once and see who will (and won't) get DMs.
+Behavior
+Before install: an empty state with one “Add to Slack” button (OAuth v2).
+Matching is by email only; mismatches are listed, not fixed here.
+Guests and external participants never get DMs.
+Test DM sends both message types to the admin.
+Scope
+Entire screen is Post-MVP.
+Claims U10, U11. Planned so the data model (users ↔ Slack ids, prefs) doesn't fight us later.
+Implementation
+shadcn-svelte: Card, Switch, Table, Badge, Button. Slack OAuth v2 install stores the bot token encrypted in
+settings
+. A notifier consumes the same
+call.started
+/
+call.ended
+/
+call.shared
+events as
+/api/v1/stream
+and calls
+chat.postMessage
+to the user's DM channel (
+conversations.open
+).
+users.lookupByEmail
+resolves Slack ids, cached.
+T20 · T21 · T22

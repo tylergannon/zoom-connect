@@ -1,0 +1,27 @@
+There is one material finding. I read the code and ran `go vet`. I didn't run the app or the tests, and I didn't open a browser.
+
+**Material finding**
+
+1. **The admin Zoom page crashes once any webhook has been logged.**
+   - **Where:** `web/src/routes/admin/zoom/+page.svelte:36` and `:45`, against `internal/httpapi/share_admin.go:166` and `:171`. The `last_webhook?: string` type is at `web/src/lib/types.ts:16`.
+   - **Trigger:** `POST /zoom/webhook` records an entry, including a plain `endpoint.url_validation`. Then `/api/admin/zoom` returns `last_webhook` as an object (`{at, event, topic, outcome}`), not a string.
+   - **Effect:** `webhookTime()` passes that object to `relativeDate()`. It becomes `new Date(object)`, an Invalid Date, and `Intl.DateTimeFormat.format` throws a `RangeError` during render. The page errors instead of showing settings, and it stays broken until the server restarts, because the webhook log is kept in memory.
+   - **Fix:** use `settings.last_webhook?.at` in the page and correct the type.
+   - **Not hit today:** with an empty webhook log, `last_webhook` is null and the page renders.
+
+**Checked and fine**
+
+- Sign-in with a `next` return path, and the sign-in link on protected routes.
+- Call list, filters and search.
+- Live call page: SSE replay then follow, dedupe by `seq`, and the finished transition (it refreshes `ended`).
+- Sharing: only participants can share, only the grantor can revoke, and a non-participant gets a 403 with participant names only. Share-by-email works for not-yet-registered users.
+- API key create, show once, revoke. Revoking closes open streams within about 3 seconds.
+- The documented endpoints all exist.
+- Admin settings are admin-only (404 for others), and demo calls are admin-only (403).
+- Svelte ownership looks fine. Each of these components owns its own remote calls and state, and none reaches into another's internals.
+
+**Limitations**
+
+- I did no browser checks, so light/dark and mobile behavior is unverified. I read the CSS breakpoints only.
+- I didn't run the integration tests.
+- `CallWorkspace.svelte` changed while I was reviewing. I reviewed the latest version.
