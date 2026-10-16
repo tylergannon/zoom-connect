@@ -1,0 +1,8 @@
+{
+  "origin": "http://127.0.0.1:8093",
+  "call_id": "01M5368XNDSDY4GGSQJZ1WMFQ5",
+  "external_email": "outside+call@example.net",
+  "share_created_through_browser": true,
+  "anonymous_status": 401,
+  "screenshot": "screenshots/sharing-any-email.png"
+}

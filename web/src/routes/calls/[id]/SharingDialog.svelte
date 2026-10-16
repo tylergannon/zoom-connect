@@ -11,7 +11,7 @@
 	let people = $state<Person[]>([]); let search = $state(''); let loading = $state(false); let busy = $state(false);
 	let error = $state(''); let toast = $state(''); let searchTimer: ReturnType<typeof setTimeout>;
 	let link = $state('');
-	const candidateEmail = $derived(/^[-\w.+]+@acme\.co$/i.test(search.trim()));
+	const candidateEmail = $derived(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(search.trim()));
 	onMount(() => () => clearTimeout(searchTimer));
 	$effect(() => { if (open) { link = window.location.href; void load(); } else { search=''; people=[]; error=''; } });
 	async function load() {
@@ -43,9 +43,9 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content class="share-dialog">
-		<Dialog.Header><Dialog.Title>Share “{topic}”</Dialog.Title><Dialog.Description>People at acme.co you add can open this call and its transcript.</Dialog.Description></Dialog.Header>
+		<Dialog.Header><Dialog.Title>Share “{topic}”</Dialog.Title><Dialog.Description>Add people by email to give them access to this call and its transcript.</Dialog.Description></Dialog.Header>
 		{#if error}<Alert.Root variant="destructive"><Alert.Title>Sharing failed</Alert.Title><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
-		{#if canShare}<div class="share-search"><input class="search-input" aria-label="Find a coworker" placeholder="Search by name or enter coworker@acme.co" bind:value={search} oninput={(e)=>lookup(e.currentTarget.value)}/><div class="share-suggestions">{#each people as person}<button onclick={()=>add(person.email||'')}><span class="avatar">{initials(person.name)}</span><span><b>{person.name}</b><small>{person.email}</small></span><span class="add-text">Add</span></button>{/each}{#if candidateEmail&&!people.some(p=>p.email?.toLowerCase()===search.trim().toLowerCase())}<button onclick={()=>add()}><span class="avatar">@</span><span><b>{search}</b><small>Grant access when they sign in</small></span><span class="add-text">Add</span></button>{/if}</div></div>
+		{#if canShare}<div class="share-search"><input class="search-input" aria-label="Find a person or enter an email" placeholder="Search by name or enter any email address" bind:value={search} oninput={(e)=>lookup(e.currentTarget.value)}/><div class="share-suggestions">{#each people as person}<button onclick={()=>add(person.email||'')}><span class="avatar">{initials(person.name)}</span><span><b>{person.name}</b><small>{person.email}</small></span><span class="add-text">Add</span></button>{/each}{#if candidateEmail&&!people.some(p=>p.email?.toLowerCase()===search.trim().toLowerCase())}<button onclick={()=>add()}><span class="avatar">@</span><span><b>{search}</b><small>Grant access when they sign in</small></span><span class="add-text">Add</span></button>{/if}</div></div>
 		{:else}<p class="muted small">You can view this call. Only a participant can add people.</p>{/if}
 		<h3>People with access</h3>{#if loading}<div class="loading-line"><span class="spinner"></span> Loading access…</div>{:else}<div class="grant-list">
 			{#each participants as person}<div class="grant-row"><span class="avatar">{initials(person.name)}</span><span><b>{person.name}</b><small>{person.id===hostId?'Host · participant':person.email||'Participant'}</small></span><span class="badge-muted">Participant</span></div>{/each}

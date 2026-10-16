@@ -94,8 +94,8 @@ func (a *Server) addShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	addr, e := mail.ParseAddress(strings.TrimSpace(in.Email))
-	if e != nil || !strings.EqualFold(strings.Split(addr.Address, "@")[len(strings.Split(addr.Address, "@"))-1], a.domain) {
-		jsonError(w, 400, "email must be in the organization")
+	if e != nil {
+		jsonError(w, 400, "enter a valid email address")
 		return
 	}
 	email := strings.ToLower(addr.Address)

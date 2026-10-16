@@ -26,7 +26,6 @@ import (
 type Server struct {
 	s              *store.Store
 	h              *hub
-	domain         string
 	zoomSecret     string
 	login          *passwordLogin
 	recorder       http.Handler
@@ -43,7 +42,7 @@ func New(next http.Handler) (http.Handler, error) {
 		return nil, err
 	}
 	h := newHub(s)
-	a := &Server{s: s, h: h, domain: env("ALLOWED_DOMAIN", "acme.co"), zoomSecret: os.Getenv("ZOOM_WEBHOOK_SECRET")}
+	a := &Server{s: s, h: h, zoomSecret: os.Getenv("ZOOM_WEBHOOK_SECRET")}
 	if err = a.seed(ctx); err != nil {
 		s.Close()
 		return nil, err
