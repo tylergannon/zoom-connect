@@ -1,0 +1,11 @@
+{
+  "call_id": "01M536261P8R3Y7W4KZRDSDQWK",
+  "call_url": "http://127.0.0.1:8096/calls/01M536261P8R3Y7W4KZRDSDQWK",
+  "uploaded_bytes": 61827,
+  "sha256": "d0cd588a4efba7a8cd31d3abdc896ea4b8c86430e2f6c5b00c0637033a3aa035",
+  "r2_download_matches": true,
+  "sse_frame_received": true,
+  "url_ttl_seconds": 600,
+  "unsigned_and_tampered_rejected": true,
+  "source": "existing sample screenshot; not a new Zoom screen-share capture"
+}

@@ -45,6 +45,7 @@ const (
 	msgKeepAliveReq           = 12
 	msgKeepAliveResp          = 13
 	msgMediaDataAudio         = 14
+	msgMediaDataDeskshare     = 16
 	msgMediaDataTranscript    = 17
 	msgMediaDataChat          = 18
 
@@ -394,6 +395,16 @@ func (s *stream) runMedia(name, u string) {
 					content["data"] = nil
 					content["data_len"] = len(b)
 					s.rec.bytes(fmt.Sprintf("audio-%v.%s", content["user_id"], s.cfg.audioCodec), b)
+					raw, _ = json.Marshal(msg)
+				}
+			}
+		}
+		if mt == msgMediaDataDeskshare {
+			if content, ok := msg["content"].(map[string]any); ok {
+				s.cfg.bridge.screen(s.streamID, content)
+				if data, ok := content["data"].(string); ok {
+					content["encoded_bytes"] = len(data)
+					delete(content, "data")
 					raw, _ = json.Marshal(msg)
 				}
 			}

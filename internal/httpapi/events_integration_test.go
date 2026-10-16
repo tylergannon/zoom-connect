@@ -28,7 +28,7 @@ func eventTestServer(t *testing.T, dsn string) (*Server, *httptest.Server) {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	a := &Server{s: s, h: newHub(s), domain: "acme.co"}
+	a := &Server{s: s, h: newHub(s)}
 	if err = a.seed(context.Background()); err != nil {
 		t.Fatal(err)
 	}

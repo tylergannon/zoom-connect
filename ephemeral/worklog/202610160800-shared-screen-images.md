@@ -1,0 +1,17 @@
+# Shared screen images
+
+decision: Tyler selected shared-screen JPEG images at one frame per second. Camera faces and audio recording are excluded from this slice.
+decision: Work is isolated from main and the hosted text deployment. Tyler subsequently authorized immediate deployment, Meowbox R2 setup, and storing generated credentials in Doppler; then approved screen-share scope and the required video scope dependency at consent time.
+decision: Store JPEG bytes as private objects; commit only frame metadata to ordered Postgres events before announcing it through SSE. Keep the existing call permissions on every image read.
+correction: Audio replay was the wrong priority; visual context from screen sharing is the useful incremental demo.
+proof: Demonstrate frame updates, history after restart, and access denial/revocation through the running local app with a clearly labeled synthetic RTMS source. Actual Zoom delivery remains a separate live proof requiring screen-share permission and an authorized meeting.
+
+correction: Do not infer Wrangler R2 failure from its OAuth scope listing. The connector rejected bucket creation, but Wrangler created the bucket successfully with the existing login.
+decision: A tiny Worker with an R2 binding provides uploads and HMAC-signed ten-minute GET links; one random demo credential is stored in Doppler zoom-connect/prd and the Worker secret. No separate S3 credential was needed.
+friction: JSON timestamps decode to float64; fmt.Sprint emits scientific notation for millisecond values. Convert to an integer string before sending an HTTP timestamp header.
+friction: Python urllib default user agent received Cloudflare error 1010 before reaching the Worker; a normal browser user agent succeeds. Go uploads and the actual browser image load succeeded.
+proof: Backend regression tests passed with TEST_DATABASE_URL pointing to zoom_connect_media_test. Frontend check passed with zero errors/warnings. The built local app and deployed Fly app both uploaded a labeled existing sample image, published its SSE metadata, and downloaded identical bytes from private R2 with a ten-minute signed URL. Unsigned and tampered links were rejected.
+proof: Zoom scope picker automatically requires meeting_video when meeting_screenshare is selected. Tyler approved the dependency, updated consent completed, and Remove App confirms installation. Runtime media remains transcript,chat,deskshare, so camera and audio sockets are not opened.
+proof: Actual Zoom accepted the deskshare handshake with JPEG at 1 fps and sent 70 frames plus 17 transcript messages. Real frame bytes downloaded from R2, and the deployed browser rendered the real shared screen, thumbnail history, and transcript. Call ID 01M5367XYWRG0V0832JZH8P02E.
+friction: The independent Remove sharing restrictions chat deployed its pre-media build at 20:26:56 UTC during the live meeting, replacing the media build and restarting the recorder. Zoom reported interruption, then stopped the stream after 60 seconds. Preserve that chat's committed email-sharing fix while combining media into the next deployment. Never claim live continuity across a deployment; the recorder has no restart recovery.
+proof: Combined media and email-sharing source passes go test ./... against zoom_connect_media_test and the production build. The obsolete sample call was stopped and both orphaned Zoom calls were marked interrupted through the existing admin event endpoint. Tyler is ending the interrupted meeting and will start a new one after the combined deployment is healthy.
