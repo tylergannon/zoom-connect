@@ -29,12 +29,12 @@ const hits = [];
 const beaconServer = http.createServer((req, res) => { hits.push(req.url); res.setHeader('access-control-allow-origin', '*'); res.end('beacon'); });
 await new Promise((resolve) => beaconServer.listen(beaconPort, '127.0.0.1', resolve));
 
-// A loopback reverse proxy in front of instance A that can fail stream requests.
+// A loopback reverse proxy in front of instance A that can fail API requests.
 const proxyPort = 57193, proxyOrigin = `http://127.0.0.1:${proxyPort}`;
 let streamsFail = false, proxyStreamFailures = 0;
 const proxiedResponses = new Set();
 const proxyServer = http.createServer((req, res) => {
-	if (streamsFail && req.url.includes('/stream')) { proxyStreamFailures++; res.writeHead(502); res.end('bad gateway'); return; }
+	if (streamsFail && req.url.startsWith('/api/')) { if (req.url.includes('/stream')) proxyStreamFailures++; res.writeHead(502); res.end('bad gateway'); return; }
 	const upstream = http.request({ host: '127.0.0.1', port: portA, path: req.url, method: req.method, headers: req.headers }, (up) => { res.writeHead(up.statusCode, up.headers); up.pipe(res); });
 	upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
 	proxiedResponses.add(res);
@@ -129,7 +129,7 @@ try {
 	check('still no page reload', await page.evaluate(() => window.__sameDocument) === 'yes', `main-frame navigations: ${mainNavigations - navigationsAtStart}`);
 
 	// A proxy error stops EventSource retries for good. A viewer behind a proxy
-	// that answers streams with 502 (as a load balancer may during a deploy)
+	// that answers API requests with 502 (as a load balancer may during a deploy)
 	// must keep the last version on screen and reopen the stream by itself.
 	const proxied = watch(await context.newPage());
 	await proxied.goto(proxyOrigin + art.viewer_url);
@@ -140,7 +140,7 @@ try {
 	for (const res of proxiedResponses) res.destroy();
 	await proxied.locator('.stream-state[data-state="reconnecting"]').waitFor({ timeout: 10000 });
 	for (let i = 0; i < 200 && proxyStreamFailures < 2; i++) await sleep(100);
-	check('stream answered with 502 keeps the last version on screen', await proxiedHeadline.textContent() === 'Version six' && await proxied.locator('.artifact-frame iframe').count() === 1, `${proxyStreamFailures} stream requests got 502`);
+	check('API answered with 502 keeps the last version on screen', await proxiedHeadline.textContent({ timeout: 2000 }).catch(() => null) === 'Version six', `${proxyStreamFailures} stream requests got 502`);
 	streamsFail = false;
 	await proxied.locator('.stream-state[data-state="live"]').waitFor({ timeout: 10000 });
 	const reopened = await agent(originA, 'PUT', `${artifacts}/${art.id}`, { base_version: 6, html: '<h1 id="headline">Version seven</h1>' });

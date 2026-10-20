@@ -127,21 +127,25 @@ receives. The final run passed 24 of 24 checks in each of Chromium, Firefox
 and WebKit:
 
 - **Two updates render with no manual reload.** v2 and v3 appeared in the
-  iframe 8–19 ms after each PUT returned. There were zero main-frame
+  iframe 10–24 ms after each PUT returned. There were zero main-frame
   navigations, and a `window` marker set after load was still present.
 - **Reconnect gets the latest.** The viewer's server was killed and the stream
   showed "Reconnecting…". The agent wrote v4 and v5 through the other
   instance. After the server restarted, v5 appeared 3.3 s later in Chromium and
   WebKit and 5.4 s later in Firefox, set by each browser's EventSource retry
   delay. v6 then arrived live, still with no reload.
-- **Proxy errors.** A viewer behind the proxy had its stream dropped. Stream
-  requests then got 502, which makes EventSource give up. The page kept showing
-  v6, and two 502s were observed. Once streams were served again the viewer
-  reopened the stream itself, and v7 arrived live 24–30 ms after its PUT.
-  An earlier Firefox attempt used Playwright request interception
-  (`page.route`) instead of the proxy. In that run the reopened stream never
-  delivered events, which looks like an interception artifact rather than
-  viewer behavior. That is why the proof uses a real proxy.
+- **Proxy errors.** A viewer behind the proxy had its stream dropped. Every
+  API request, including the stream, then got 502, which makes EventSource give
+  up. The page kept showing v6, and two stream 502s were observed. Once the API
+  was served again the viewer reopened the stream itself, and v7 arrived live
+  14–27 ms after its PUT.
+  - **Mutation check.** A Chromium run with the viewer's earlier reconnect code
+    failed both checks. A 502 on the access recheck replaced the presented
+    page with an error, and the stream never came back.
+  - **Why a real proxy.** An earlier Firefox attempt used Playwright request
+    interception (`page.route`) instead of the proxy. In that run the reopened
+    stream never delivered events, which looks like an interception artifact
+    rather than viewer behavior.
 - **Conflicts.** A stale `base_version` got 409 with `current_version: 3`.
 - **Outsiders.** A signed-in user without access sees the no-access state and
   no iframe. Their API read gets 403.
