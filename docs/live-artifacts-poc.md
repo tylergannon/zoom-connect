@@ -24,8 +24,10 @@ relates to `nlspec.md` are in
 - **Isolation:** agent HTML is untrusted. It is only ever returned as a JSON
   string and is shown in `<iframe sandbox="" srcdoc>`, which gives it an opaque
   origin with no scripts, forms, popups or navigation of the app. A CSP meta
-  tag inside the frame blocks every network load. Artifacts are static HTML
-  and CSS; images and fonts must be `data:` URIs.
+  tag inside the frame blocks the page's own subresource loads (images,
+  styles, fonts, media, nested frames, objects) except inline styles and
+  `data:` URIs. Artifacts are static HTML and CSS; images and fonts must be
+  `data:` URIs. Clicked links are the exception; see the limitations.
 
 ## Agent API (curl)
 
@@ -159,7 +161,7 @@ and WebKit:
   - change the base URL, use meta refresh, submit a `target=_top` form, and
     have `target=_top` and `target=_blank` links clicked.
 
-  In the viewer there were zero beacon requests and the script did not run. The
+  In the viewer none of these reached the beacon host and the script did not run. The
   page title and URL were unchanged, no dialog or popup appeared, and the set
   of API keys was unchanged.
 - **Controls show the payload is live and each layer matters.** The same
@@ -167,9 +169,9 @@ and WebKit:
   every vector. It created an API key using the viewer's cookie and sent it out,
   which is the app-origin privilege the sandbox removes. With `sandbox=""` but
   no policy, scripts were blocked but images, CSS, fonts, media, objects and
-  nested frames still loaded from the beacon host. The policy closes that gap.
+  nested frames still loaded from the beacon host. The policy blocks those loads.
   The last control is the viewer's exact rendered `srcdoc` without the
-  `sandbox` attribute. The policy still stopped scripts and every load, but
+  `sandbox` attribute. The policy still stopped scripts and those loads, but
   the frame's origin was the app's (`http://127.0.0.1:57190`): any script that
   got past the policy would act as the signed-in user. Its meta refresh
   navigated the frame, the `_blank` link opened a popup, and the `_top` link
@@ -206,6 +208,13 @@ at a scratch database.
 - **Static artifacts only.** No JavaScript runs, so interactive charts are not
   possible. External images and fonts are blocked by design, so use `data:`
   URIs.
+- **Clicked links can navigate the frame.** The policy covers loads the page
+  makes by itself, not navigation. An independent review found that clicking
+  an ordinary link (default `target`) navigates the sandboxed frame away from
+  the artifact and requests the link's URL, which tells that host about the
+  click. The parent page was unchanged, and app privileges stay blocked. The
+  browser proof covers automatic loads, meta refresh, a `target=_top` form and
+  `target=_top`/`_blank` links, not every possible navigation.
 - **Whole-page updates.** Each version replaces the iframe document, so scroll
   position resets on every update. There is no diff or patch format.
 - **Delivery timing.** Wake-ups are in-process. Other instances, and a viewer

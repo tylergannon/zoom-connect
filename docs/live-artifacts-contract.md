@@ -82,10 +82,14 @@ within that interval.
 string, with `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
 It is never served as an HTML document on the app origin. The viewer renders it
 in `<iframe sandbox="" srcdoc=…>`, which gives it an opaque origin with no
-scripts, forms, popups or top navigation. A leading
-`Content-Security-Policy` meta tag then blocks every network load:
+scripts, forms, popups, top navigation or access to the app page. A leading
+`Content-Security-Policy` meta tag restricts the page's own subresource loads
+to inline styles and `data:` images, fonts and media:
 `default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; form-action 'none'; base-uri 'none'`.
 So artifacts are static HTML and CSS, with images and fonts only as `data:` URIs.
+The policy does not govern navigation. A link a viewer clicks (default
+`target`) navigates the sandboxed frame and requests the link's URL; the app
+page's privileges stay blocked.
 
 ## Relationship to the spec
 

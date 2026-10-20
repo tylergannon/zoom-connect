@@ -1,7 +1,9 @@
 // Agent-written HTML is untrusted. It renders only inside <iframe sandbox="">
 // (opaque origin: no scripts, forms, popups, top navigation or same-origin
-// access). This policy is defense in depth that also blocks network loads,
-// so a page cannot beacon to other hosts; inline styles and data: media work.
+// access). This policy also blocks the page's own subresource loads (images,
+// styles, fonts, media, nested frames, objects) other than inline styles and
+// data: media. It does not govern navigation: a link the viewer clicks can
+// still load another URL inside the sandboxed frame.
 export const artifactPolicy =
 	"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; form-action 'none'; base-uri 'none'";
 
