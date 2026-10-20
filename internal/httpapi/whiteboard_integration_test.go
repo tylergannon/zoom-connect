@@ -32,7 +32,8 @@ type fakeZoomCall struct {
 // fakeZoom stands in for https://api.zoom.us/v2 with the documented status
 // codes and response fields. mode "ok" accepts everything and "slow" also
 // delays board creation; "content403" and "create401" reject the named step
-// the way Zoom documents.
+// the way Zoom documents. "content403echo" and "create429echo" also echo the
+// caller's Authorization header in the error, as a misbehaving upstream might.
 func fakeZoom(t *testing.T, mode string) (*httptest.Server, func() []fakeZoomCall) {
 	t.Helper()
 	var mu sync.Mutex
@@ -56,10 +57,16 @@ func fakeZoom(t *testing.T, mode string) (*httptest.Server, func() []fakeZoomCal
 		switch {
 		case r.Method == "POST" && r.URL.Path == "/v2/whiteboards" && mode == "create401":
 			reply(401, map[string]any{"code": 124, "message": "fake: invalid access token"})
+		case r.Method == "POST" && r.URL.Path == "/v2/whiteboards" && mode == "create429echo":
+			w.Header().Set("Retry-After", "30")
+			reply(429, map[string]any{"code": 429, "message": "fake: too many requests for " + r.Header.Get("Authorization")})
 		case r.Method == "POST" && r.URL.Path == "/v2/whiteboards":
 			reply(201, map[string]any{"whiteboard_id": "wb_fake_1", "whiteboard_name": body["name"], "created_at": "2026-10-20T00:00:00Z"})
 		case r.Method == "POST" && r.URL.Path == "/v2/whiteboards/wb_fake_1/content" && mode == "content403":
 			reply(403, map[string]any{"code": 111804, "message": "fake: no permission to edit this whiteboard"})
+		case r.Method == "POST" && r.URL.Path == "/v2/whiteboards/wb_fake_1/content" && mode == "content403echo":
+			w.Header().Set("Retry-After", r.Header.Get("Authorization"))
+			reply(403, map[string]any{"code": 111804, "message": "fake: no permission to edit this whiteboard; got " + r.Header.Get("Authorization")})
 		case r.Method == "POST" && r.URL.Path == "/v2/whiteboards/wb_fake_1/content":
 			objects, _ := body["content_objects"].([]any)
 			for i, o := range objects {
@@ -563,6 +570,49 @@ func TestWhiteboardPublishFailures(t *testing.T) {
 	}
 	if got := eventKinds(t, a, call.ID, "board.published"); len(got) != 0 {
 		t.Fatalf("failed publish recorded success: %v", got)
+	}
+}
+
+// An upstream error that echoes the bearer token must not reach the app's
+// response or stored call events. Stage, status, code, the rest of the
+// message and a valid Retry-After survive.
+func TestWhiteboardPublishErrorsRedactToken(t *testing.T) {
+	dsn := testDatabase(t)
+	a, ts := eventTestServer(t, dsn)
+	dana := eventLogin(t, ts)
+	call := eventTestCall(t, ts, dana)
+	board := ts.URL + "/api/calls/" + call.ID + "/whiteboard"
+	publish := func(mode string) (int, map[string]any) {
+		fake, _ := fakeZoom(t, mode)
+		a.boards = nativeBoards(fake.URL)
+		code, out := boardRequest(t, ts, "POST", board, dana, "", decisionDraft)
+		if code != 201 {
+			t.Fatalf("draft: %d", code)
+		}
+		code, out = boardRequest(t, ts, "POST", board+"/publish", dana, "", fmt.Sprintf(`{"draft_seq":%d}`, asNumber(asMap(out["event"])["seq"])))
+		if raw, _ := json.Marshal(out); strings.Contains(string(raw), fakeZoomToken) {
+			t.Fatalf("%s: response leaks the token: %s", mode, raw)
+		}
+		return code, out
+	}
+
+	code, out := publish("content403echo")
+	zerr := asMap(out["zoom"])
+	if code != 502 || zerr["stage"] != "content" || asNumber(zerr["status"]) != 403 || asNumber(zerr["code"]) != 111804 || !strings.Contains(fmt.Sprint(zerr["message"]), "no permission to edit") || zerr["retry_after"] != nil || out["whiteboard_id"] != "wb_fake_1" {
+		t.Fatalf("content failure: %d %v", code, out)
+	}
+	var stored string
+	if err := a.s.Pool.QueryRow(context.Background(), `SELECT coalesce(string_agg(data::text, ' '), '') FROM call_events WHERE call_id=$1`, call.ID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stored, fakeZoomToken) || len(eventKinds(t, a, call.ID, "board.publish_failed")) != 1 {
+		t.Fatalf("stored events leak the token or miss the failure: %s", stored)
+	}
+
+	code, out = publish("create429echo")
+	zerr = asMap(out["zoom"])
+	if code != 502 || zerr["stage"] != "create" || asNumber(zerr["status"]) != 429 || zerr["retry_after"] != "30" || !strings.Contains(fmt.Sprint(zerr["message"]), "too many requests") {
+		t.Fatalf("create failure: %d %v", code, out)
 	}
 }
 

@@ -282,6 +282,20 @@ func (e *zoomError) Error() string {
 	return fmt.Sprintf("Zoom Whiteboard %s failed: %d %d %s", e.Stage, e.Status, e.Code, e.Message)
 }
 
+// retryAfter keeps a Retry-After value only in its standard forms, seconds or
+// an HTTP date, so the header cannot carry other text, such as an echoed
+// credential, into responses and stored events.
+func retryAfter(v string) string {
+	v = strings.TrimSpace(v)
+	if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		return v
+	}
+	if _, err := http.ParseTime(v); err == nil {
+		return v
+	}
+	return ""
+}
+
 func (z *zoomWhiteboards) do(ctx context.Context, stage, method, path string, body any, want int, out any) error {
 	var reader io.Reader
 	if body != nil {
@@ -312,13 +326,18 @@ func (z *zoomWhiteboards) do(ctx context.Context, stage, method, path string, bo
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if resp.StatusCode != want {
-		e := &zoomError{Stage: stage, Status: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After")}
+		e := &zoomError{Stage: stage, Status: resp.StatusCode, RetryAfter: retryAfter(resp.Header.Get("Retry-After"))}
 		var reply struct {
 			Code    int    `json:"code"`
 			Message string `json:"message"`
 		}
 		if json.Unmarshal(data, &reply) == nil {
-			e.Code, e.Message = reply.Code, truncateText(reply.Message, 300)
+			// Redact before truncating so no prefix of the token survives.
+			msg := reply.Message
+			if z.token != "" {
+				msg = strings.ReplaceAll(msg, z.token, "[redacted]")
+			}
+			e.Code, e.Message = reply.Code, truncateText(msg, 300)
 		}
 		return e
 	}
