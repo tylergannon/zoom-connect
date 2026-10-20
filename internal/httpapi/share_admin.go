@@ -447,6 +447,13 @@ func (a *Server) zoomWebhook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		addWebhook(webhookEntry{At: now, Event: payload.Event, Topic: payload.Payload.Object.Topic, Outcome: "accepted"})
+	} else if payload.Event == "whiteboard.opened" && a.whiteboard().enabled {
+		outcome, err := a.boardOpened(r.Context(), body)
+		if err != nil {
+			jsonError(w, 500, "database error")
+			return
+		}
+		addWebhook(webhookEntry{At: now, Event: payload.Event, Outcome: outcome})
 	} else {
 		addWebhook(webhookEntry{At: now, Event: payload.Event, Outcome: "ignored"})
 	}

@@ -31,6 +31,7 @@ type Server struct {
 	recorder       http.Handler
 	recorderHealth string
 	screens        screenStorage
+	boards         *zoomWhiteboards
 }
 
 func New(next http.Handler) (http.Handler, error) {
@@ -60,6 +61,10 @@ func New(next http.Handler) (http.Handler, error) {
 		return nil, err
 	}
 	if err = a.configureScreens(); err != nil {
+		s.Close()
+		return nil, err
+	}
+	if err = a.configureWhiteboard(); err != nil {
 		s.Close()
 		return nil, err
 	}
@@ -97,6 +102,9 @@ func (a *Server) routes(m *http.ServeMux) {
 	priv("GET /api/calls/{id}/transcript", a.transcript)
 	priv("POST /api/demo/calls/{id}/screenshots", a.addScreenFrame)
 	priv("GET /api/calls/{id}/screenshots/{seq}", a.screenFrameLink)
+	priv("GET /api/calls/{id}/whiteboard", a.whiteboardStatus)
+	priv("POST /api/calls/{id}/whiteboard", a.draftWhiteboard)
+	priv("POST /api/calls/{id}/whiteboard/publish", a.publishWhiteboard)
 	priv("GET /api/calls/{id}/shares", a.shares)
 	priv("POST /api/calls/{id}/shares", a.addShare)
 	priv("DELETE /api/calls/{id}/shares/{shareId}", a.removeShare)
@@ -122,6 +130,9 @@ func (a *Server) routes(m *http.ServeMux) {
 	priv("GET /api/v1/calls/{id}/events", a.events)
 	priv("GET /api/v1/calls/{id}/stream", a.stream)
 	priv("GET /api/v1/calls/{id}/transcript", a.transcript)
+	priv("GET /api/v1/calls/{id}/whiteboard", a.whiteboardStatus)
+	priv("POST /api/v1/calls/{id}/whiteboard", a.draftWhiteboard)
+	priv("POST /api/v1/calls/{id}/whiteboard/publish", a.publishWhiteboard)
 	priv("GET /api/stream", a.announcements)
 	priv("GET /api/v1/stream", a.announcements)
 }
