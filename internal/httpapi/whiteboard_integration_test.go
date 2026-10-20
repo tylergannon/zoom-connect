@@ -454,7 +454,7 @@ func TestWhiteboardPublishAgainstFakeZoom(t *testing.T) {
 		t.Fatalf("republish reached Zoom: %d requests", n)
 	}
 
-	// whiteboard.opened is the only documented in-meeting signal.
+	// whiteboard.opened is the only in-meeting signal this app handles.
 	opened := `{"event":"whiteboard.opened","event_ts":1760990000000,"payload":{"account_id":"fake","operator_id":"fake-operator","object":{"whiteboard_id":"wb_fake_1","whiteboard_name":"Follow-ups","meeting_id":85012345678,"meeting_uuid":"fake-meeting-uuid=="}}}`
 	if code := signedWebhook(t, ts, a.zoomSecret, opened, false); code != 401 {
 		t.Fatalf("unsigned webhook: got %d, want 401", code)

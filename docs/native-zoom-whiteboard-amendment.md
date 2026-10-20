@@ -10,9 +10,11 @@ behind this proposal is reported in
 The prototype conflicts with durable intent in four places:
 
 1. **§4 Exclusions** bans "a participant bot, voice output, or any channel
-   back into the meeting." Publishing writes to the host's Zoom account,
-   though not into the meeting itself, since a person still has to open the
-   board in the meeting. Even so, it is the first outbound write to Zoom.
+   back into the meeting." Publishing writes to a Zoom account, though not
+   into the meeting itself, since a person still has to open the board in
+   the meeting. In the prototype that is the account of one operator-supplied
+   token, not necessarily the host's. Even so, it is the first outbound write
+   to Zoom.
 2. **§1 design principle:** "The event format and the consumer-facing API
    carry no Zoom-specific concepts. Zoom's protocol is confined to two
    cells."
@@ -42,6 +44,9 @@ The prototype conflicts with durable intent in four places:
 > Whiteboard in their own Zoom account. Opening it in a meeting remains a
 > human action in the Zoom client.
 
+The prototype does not yet meet "their own Zoom account", because it uses
+one operator token (see *Token custody* below).
+
 **Principle note (§1):**
 
 > Board drafts are provider-neutral. Publishing is a sink adapter. Events from
@@ -59,7 +64,7 @@ account (absent for `board.in_meeting`), and `ts` equals `recv`.
 ```
 
 **New cell `boards` (proposed budget 650 lines of hand-written Go, tests
-excluded; the prototype is 637):**
+excluded; the prototype is 646):**
 
 Responsibility:
 - validate and lay out drafts;
@@ -77,7 +82,9 @@ INTERFACE Boards:
 ```
 
 zoomhook would emit `BoardOpened{whiteboard_id, whiteboard_name, meeting_id,
-meeting_uuid, operator_id}` from a verified `whiteboard.opened`.
+meeting_uuid, operator_id}` from a verified `whiteboard.opened`. That is the
+only signal the prototype implements. Zoom's `whiteboard.shared` and
+`whiteboard.created` also document meeting fields; they are not handled.
 
 ## Proposed claims
 
@@ -85,22 +92,28 @@ meeting_uuid, operator_id}` from a verified `whiteboard.opened`.
   keys) can draft, and only while the call is scheduled or live. A
   share-only viewer can read status. Others get `403`.
   Demonstrated by `TestWhiteboardDraftAccessAndPreview`.
-- **B2 (cell-local).** Native content objects contain only `type`, `x` and
-  `y`, the fields Zoom documents. Card text is never sent.
+- **B2 (cell-local).** Outbound native content objects contain only `type`,
+  `x` and `y`, the only fields in Zoom's documented example. Card text is
+  never sent. This is a claim about the request, not about how Zoom renders
+  it.
   Demonstrated by `TestWhiteboardDraftAccessAndPreview` and
   `TestLayoutBoardCoordinates`.
 - **B3 (cell-local).** With any precondition missing, publish returns `503`
   naming the missing items and makes no outbound request. With all present,
   publish sends exactly create, content and read-back. The token is not
   stored or returned. A failure after the board was created records a
-  failure event that names the board. Concurrent publishes of one draft
-  create one board.
+  failure event that names the board. Concurrent publishes of one draft to
+  one app process create one board. That lock does not coordinate several
+  instances. It also does not resolve uncertain external outcomes: a request
+  that failed or timed out may still have created a board in Zoom, and a
+  retry creates another.
   Demonstrated against a local fake by `TestWhiteboardPublishAgainstFakeZoom`,
   `TestWhiteboardConcurrentPublishCreatesOneBoard`,
   `TestWhiteboardPublishFailures` and `TestConfigureWhiteboard`.
 - **B4 (integration, NOT demonstrated).** With an approved user OAuth grant,
-  publishing a draft creates a board in the host's Zoom account, and
-  read-back finds every rectangle. Requires a live Zoom account.
+  publishing a draft creates a board in the token user's Zoom account, and
+  read-back finds every `rect` object. Requires a live Zoom account. How
+  Zoom renders those objects is a further, also undemonstrated, question.
 - **B5 (integration, NOT demonstrated).** When the host opens that board in
   the call's meeting, Zoom's `whiteboard.opened` is recorded once as
   `board.in_meeting` with `same_meeting=true`. Requires:
@@ -115,7 +128,10 @@ meeting_uuid, operator_id}` from a verified `whiteboard.opened`.
 
 - **Token custody.** Options are one operator token (boards owned by that
   user) or per-host OAuth (boards owned by each host). Per-host OAuth changes
-  auth and storage.
+  auth and storage. The prototype implements only the first: one
+  operator-supplied global token, not bound to any call host's Zoom identity.
+  Keep native publishing off for real multi-user use until an approved
+  per-host auth mapping exists. The prototype does not build one.
 - **Renderer schema.** Text, sticky notes or connectors need documented
   fields, or an approved sandbox experiment.
 - **Edits.** Object identity and "updated" semantics are undocumented. Until

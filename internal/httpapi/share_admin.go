@@ -448,6 +448,8 @@ func (a *Server) zoomWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		addWebhook(webhookEntry{At: now, Event: payload.Event, Topic: payload.Payload.Object.Topic, Outcome: "accepted"})
 	} else if payload.Event == "whiteboard.opened" && a.whiteboard().enabled {
+		// Unreachable when RTMS_RECORDER_URL proxies /zoom/webhook to the
+		// recorder, which does not forward Whiteboard events.
 		outcome, err := a.boardOpened(r.Context(), body)
 		if err != nil {
 			jsonError(w, 500, "database error")

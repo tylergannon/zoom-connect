@@ -20,13 +20,16 @@ import (
 )
 
 // Prototype: agents draft boards for a call; the call host may publish a
-// reviewed draft to Zoom Whiteboard through the documented REST API.
+// reviewed draft to Zoom Whiteboard through the documented REST API. Publishing
+// uses one operator-supplied token, not bound to the host's Zoom identity.
 //
 // Zoom documents content_objects only as "a free-form JSON map whose schema is
 // determined by the whiteboard renderer", with one example: {"type":"rect",
-// "x":100,"y":200}. Native requests therefore carry positioned rectangles only.
-// Card text, lane headings, card size and links stay in the local preview.
-// Nothing here opens a board inside a meeting: no documented API does that.
+// "x":100,"y":200}. Native requests therefore carry only type, x and y; how Zoom
+// renders such objects is unverified. Card text, lane headings, card size and
+// links stay in the local preview. Nothing here opens a board inside a meeting:
+// no documented operation for that was found in the reviewed REST and Zoom Apps
+// SDK (v0.16.42) references.
 
 const defaultWhiteboardAPI = "https://api.zoom.us/v2"
 
@@ -214,8 +217,10 @@ type zoomWhiteboards struct {
 	enabled     bool
 	scopes      map[string]bool
 	client      *http.Client
-	// publishing serializes publishes so one draft never creates two boards;
-	// the deployment is a single application instance.
+	// publishing serializes publishes within this process, so concurrent
+	// requests here cannot publish one draft twice. It does not coordinate
+	// several instances, and a failed or timed-out request may still have
+	// created a board in Zoom, so a retry can create another.
 	publishing sync.Mutex
 }
 
@@ -585,7 +590,11 @@ func (a *Server) publishWhiteboard(w http.ResponseWriter, r *http.Request) {
 }
 
 // boardOpened records Zoom's report that a board this app published was opened
-// inside a meeting. The webhook is the only documented in-meeting signal.
+// inside a meeting. whiteboard.opened is the only in-meeting signal implemented
+// here; Zoom's whiteboard.shared and whiteboard.created events also document
+// meeting fields and are ignored. When RTMS_RECORDER_URL is set, /zoom/webhook
+// is proxied to the recorder, which does not forward Whiteboard events, so this
+// never runs.
 func (a *Server) boardOpened(ctx context.Context, body []byte) (string, error) {
 	var hook struct {
 		Payload struct {
