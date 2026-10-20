@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -213,6 +214,9 @@ type zoomWhiteboards struct {
 	enabled     bool
 	scopes      map[string]bool
 	client      *http.Client
+	// publishing serializes publishes so one draft never creates two boards;
+	// the deployment is a single application instance.
+	publishing sync.Mutex
 }
 
 func (a *Server) configureWhiteboard() error {
@@ -541,6 +545,8 @@ func (a *Server) publishWhiteboard(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 500, "invalid draft")
 		return
 	}
+	z.publishing.Lock()
+	defer z.publishing.Unlock()
 	var published bool
 	if err = a.s.Pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM call_events WHERE call_id=$1 AND kind='board.published' AND data->>'draft_seq'=$2)`, c.ID, strconv.FormatInt(in.DraftSeq, 10)).Scan(&published); err != nil {
 		jsonError(w, 500, "database error")

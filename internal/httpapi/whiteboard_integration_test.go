@@ -30,14 +30,19 @@ type fakeZoomCall struct {
 }
 
 // fakeZoom stands in for https://api.zoom.us/v2 with the documented status
-// codes and response fields. mode "ok" accepts everything; "content403" and
-// "create401" reject the named step the way Zoom documents.
+// codes and response fields. mode "ok" accepts everything and "slow" also
+// delays board creation; "content403" and "create401" reject the named step
+// the way Zoom documents.
 func fakeZoom(t *testing.T, mode string) (*httptest.Server, func() []fakeZoomCall) {
 	t.Helper()
 	var mu sync.Mutex
 	var calls []fakeZoomCall
 	var saved []any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if mode == "slow" && r.URL.Path == "/v2/whiteboards" {
+			// Hold the create step open so concurrent publishes overlap.
+			time.Sleep(150 * time.Millisecond)
+		}
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		mu.Lock()
@@ -474,6 +479,48 @@ func TestWhiteboardPublishAgainstFakeZoom(t *testing.T) {
 	latest := asMap(status["latest"])
 	if code != 200 || latest["published"] == nil || latest["opened"] == nil {
 		t.Fatalf("status after publish and open: %v", latest)
+	}
+}
+
+func TestWhiteboardConcurrentPublishCreatesOneBoard(t *testing.T) {
+	dsn := testDatabase(t)
+	a, ts := eventTestServer(t, dsn)
+	fake, calls := fakeZoom(t, "slow")
+	a.boards = nativeBoards(fake.URL)
+	dana := eventLogin(t, ts)
+	call := eventTestCall(t, ts, dana)
+	board := ts.URL + "/api/calls/" + call.ID + "/whiteboard"
+	code, out := boardRequest(t, ts, "POST", board, dana, "", decisionDraft)
+	if code != 201 {
+		t.Fatalf("draft: %d", code)
+	}
+	body := fmt.Sprintf(`{"draft_seq":%d}`, asNumber(asMap(out["event"])["seq"]))
+	codes := make(chan int, 4)
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, _ := http.NewRequest("POST", board+"/publish", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.AddCookie(dana)
+			resp, err := ts.Client().Do(req)
+			if err != nil {
+				codes <- 0
+				return
+			}
+			resp.Body.Close()
+			codes <- resp.StatusCode
+		}()
+	}
+	wg.Wait()
+	close(codes)
+	got := map[int]int{}
+	for c := range codes {
+		got[c]++
+	}
+	if got[201] != 1 || got[409] != 3 || len(calls()) != 3 || len(eventKinds(t, a, call.ID, "board.published")) != 1 {
+		t.Fatalf("concurrent publishes: codes %v, %d Zoom requests", got, len(calls()))
 	}
 }
 

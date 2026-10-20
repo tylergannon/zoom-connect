@@ -144,7 +144,7 @@ Publish with native publishing off returned `503`:
 All checks ran locally on 2026-10-20 with Go 1.27.2, `GOMAXPROCS=2`, and a
 private throwaway Postgres 17 container (`127.0.0.1:57660`, tmpfs).
 
-- `go test -p 1 -count=1 -v ./...` with `TEST_DATABASE_URL=…/zoom_connect_whiteboard_test` exits **0**: 38 PASS, 0 SKIP, 0 FAIL (`cmd/rtmsrec`, `internal/httpapi`). New tests:
+- `go vet ./...` is clean. `go test -p 1 -count=1 -v ./...` with `TEST_DATABASE_URL=…/zoom_connect_whiteboard_test` exits **0**: 39 PASS, 0 SKIP, 0 FAIL (`cmd/rtmsrec`, `internal/httpapi`). New tests:
   - **`TestWhiteboardDraftAccessAndPreview`** (real handlers and Postgres) covers:
     - anonymous `401`;
     - an API-key agent draft on `/api/v1` that records the agent name;
@@ -167,6 +167,7 @@ private throwaway Postgres 17 container (`127.0.0.1:57660`, tmpfs).
     - republish `409` without calling Zoom;
     - `400` for a missing `draft_seq` and `404` for a non-draft seq;
     - `whiteboard.opened`: unsigned `401`; outside a meeting or an unknown board are ignored; a signed in-meeting event produces one `board.in_meeting` event with `meeting_id "85012345678"`.
+  - **`TestWhiteboardConcurrentPublishCreatesOneBoard`**: 4 concurrent publishes of one draft, with Zoom's create step held open, produce one `201`, three `409`s, 3 Zoom requests and one `board.published` event. A mutation run without the publish lock failed (4 boards, 12 requests), so the test detects the race.
   - **`TestWhiteboardPublishFailures`** checks two failure modes:
     - create `401`/`124` → `502` at stage `create`, with no board and no event;
     - content `403`/`111804` → `502` at stage `content`, with `whiteboard_id`, a `board.publish_failed` event, and no success event.
@@ -195,6 +196,8 @@ private throwaway Postgres 17 container (`127.0.0.1:57660`, tmpfs).
   request round-trip, not how the renderer displays the objects.
 - Retries, rate limits (`Retry-After` is surfaced but not acted on), board
   deletion and collaborator sharing are not implemented.
+- Publishes are serialized by an in-process lock. This is correct for the
+  single-instance deployment; several instances would need a database lock.
 - Webhook correlation only matches boards whose IDs appear in this app's
   `board.published` events. `same_meeting` needs the call's Zoom meeting ID or
   UUID.

@@ -59,7 +59,7 @@ account (absent for `board.in_meeting`), and `ts` equals `recv`.
 ```
 
 **New cell `boards` (proposed budget 650 lines of hand-written Go, tests
-excluded; the prototype is 631):**
+excluded; the prototype is 637):**
 
 Responsibility:
 - validate and lay out drafts;
@@ -93,8 +93,10 @@ meeting_uuid, operator_id}` from a verified `whiteboard.opened`.
   naming the missing items and makes no outbound request. With all present,
   publish sends exactly create, content and read-back. The token is not
   stored or returned. A failure after the board was created records a
-  failure event that names the board.
+  failure event that names the board. Concurrent publishes of one draft
+  create one board.
   Demonstrated against a local fake by `TestWhiteboardPublishAgainstFakeZoom`,
+  `TestWhiteboardConcurrentPublishCreatesOneBoard`,
   `TestWhiteboardPublishFailures` and `TestConfigureWhiteboard`.
 - **B4 (integration, NOT demonstrated).** With an approved user OAuth grant,
   publishing a draft creates a board in the host's Zoom account, and
