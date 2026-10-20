@@ -123,7 +123,7 @@ call the real HTTP handlers against real Postgres, with `-race`:
 Playwright against the built binary. It runs two instances on one database,
 an agent that only holds a Bearer key, a loopback reverse proxy that can fail
 stream requests, and a loopback beacon server that records any request it
-receives. The final run passed 22 of 22 checks in each of Chromium, Firefox
+receives. The final run passed 24 of 24 checks in each of Chromium, Firefox
 and WebKit:
 
 - **Two updates render with no manual reload.** v2 and v3 appeared in the
@@ -164,6 +164,13 @@ and WebKit:
   which is the app-origin privilege the sandbox removes. With `sandbox=""` but
   no policy, scripts were blocked but images, CSS, fonts, media, objects and
   nested frames still loaded from the beacon host. The policy closes that gap.
+  The last control is the viewer's exact rendered `srcdoc` without the
+  `sandbox` attribute. The policy still stopped scripts and every load, but
+  the frame's origin was the app's (`http://127.0.0.1:57190`): any script that
+  got past the policy would act as the signed-in user. Its meta refresh
+  navigated the frame, the `_blank` link opened a popup, and the `_top` link
+  navigated the app page away, all to the beacon host. The sandbox is what
+  prevents those.
 
 **Other checks:**
 

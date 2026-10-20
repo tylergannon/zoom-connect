@@ -218,6 +218,23 @@ try { alert('alert ${tag}'); } catch (e) {}
 	check('control without sandbox gets app-origin privilege', JSON.stringify(keysControl).includes('stolen-control-unsandboxed'), 'payload created an API key with the viewer cookie');
 	check('control with sandbox but no policy blocks scripts', !sandboxOnlyHits.includes('/control-sandbox-only/script') && !JSON.stringify(keysControl).includes('stolen-control-sandbox-only'));
 	check('control with sandbox but no policy still leaks passive loads (policy is needed)', sandboxOnlyHits.length > 0, sandboxOnlyHits.join(', '));
+
+	// The viewer's exact rendered document without the sandbox attribute. The
+	// policy still stops scripts and loads, but the frame shares the app origin
+	// and can refresh itself, open popups and navigate the app page.
+	const viewerDocument = (await hostilePage.locator('.artifact-frame iframe').getAttribute('srcdoc')).replaceAll('/viewer/', '/control-policy-only/').replaceAll('stolen-viewer', 'stolen-control-policy-only');
+	const policyOnly = watch(await context.newPage());
+	await policyOnly.goto(`${originA}/keys`);
+	await policyOnly.evaluate((docs) => docs.forEach((html, i) => { const frame = document.createElement('iframe'); frame.id = `policy-only-${i}`; frame.srcdoc = html; document.body.append(frame); }), [viewerDocument, viewerDocument.replace(/<meta http-equiv="refresh"[^>]*>/, '')]);
+	await policyOnly.frameLocator('#policy-only-1').locator('#headline').waitFor({ timeout: 10000 });
+	const policyOrigin = await policyOnly.frames()[2]?.evaluate(() => origin).catch((e) => `unavailable: ${e.message.split('\n')[0]}`);
+	for (let i = 0; i < 50 && !hits.includes('/control-policy-only/refresh'); i++) await sleep(100);
+	for (const id of ['#blanklink', '#toplink']) await policyOnly.frameLocator('#policy-only-1').locator(id).click({ timeout: 3000, noWaitAfter: true }).catch(() => {});
+	await sleep(2000);
+	const policyHits = hits.filter((h) => h.startsWith('/control-policy-only/'));
+	const navigationHits = policyHits.filter((h) => /\/(refresh|top|blank)$/.test(h));
+	check('control with policy but no sandbox still blocks scripts and loads', policyHits.length === navigationHits.length && !JSON.stringify((await json(await context.request.get(`${originA}/api/keys`))).body).includes('stolen-control-policy-only'), policyHits.join(', '));
+	check('control with policy but no sandbox shares the app origin and navigates (sandbox is needed)', navigationHits.length > 0, `navigations: ${navigationHits.join(', ')}; frame origin: ${policyOrigin}`);
 	results.hits = hits;
 } catch (error) {
 	check('proof completed', false, String(error?.stack || error));
