@@ -15,7 +15,7 @@
 	let streamState = $state<'connecting'|'live'|'reconnecting'|'ended'>('connecting');
 	let frameWrap: HTMLDivElement | undefined = $state();
 	let source: EventSource | null = null;
-	let rechecking = false;
+	let rechecking = '';
 	let retry: ReturnType<typeof setTimeout> | undefined;
 	const base = $derived(`/api/calls/${encodeURIComponent(callId)}/artifacts/${encodeURIComponent(artifactId)}`);
 	const srcdoc = $derived(artifact ? artifactDocument(artifact.html) : '');
@@ -26,8 +26,10 @@
 		void load(key);
 		return () => { clearTimeout(retry); source?.close(); source = null; };
 	});
-	// Versions only move forward; stale or repeated snapshots are ignored.
+	// Versions only move forward; stale or repeated snapshots are ignored, and
+	// so is a snapshot of another artifact (a reply from before a route change).
 	function accept(next: ArtifactSnapshot) {
+		if (next.call_id !== callId || next.id !== artifactId) return;
 		if (!artifact || next.version > artifact.version) artifact = next;
 	}
 	async function load(key: string) {
@@ -41,23 +43,26 @@
 	}
 	function connect(key: string, from: number) {
 		source?.close();
-		source = new EventSource(`${key}/stream?from=${from}`);
+		const es = new EventSource(`${key}/stream?from=${from}`);
+		source = es;
 		streamState = 'connecting';
-		source.onopen = () => streamState = 'live';
-		source.addEventListener('artifact', (event) => {
+		// A replaced stream (route change or reconnect) no longer touches state.
+		es.onopen = () => { if (source === es) streamState = 'live'; };
+		es.addEventListener('artifact', (event) => {
+			if (source !== es) return;
 			try { accept(JSON.parse((event as MessageEvent).data) as ArtifactSnapshot); } catch { /* ignore malformed frames */ }
 		});
-		source.addEventListener('end', () => { source?.close(); source = null; streamState = 'ended'; });
-		source.onerror = () => { if (streamState !== 'ended') { streamState = 'reconnecting'; void recheck(key); } };
+		es.addEventListener('end', () => { if (source !== es) return; es.close(); source = null; streamState = 'ended'; });
+		es.onerror = () => { if (source === es && streamState !== 'ended') { streamState = 'reconnecting'; void recheck(key); } };
 	}
 	// The server closes the stream when access ends. A plain read tells that
 	// apart from a network or proxy failure, which keeps the last version shown.
 	async function recheck(key: string) {
-		if (rechecking) return;
-		rechecking = true;
-		try { accept(await api<ArtifactSnapshot>(key)); }
+		if (rechecking === key) return;
+		rechecking = key;
+		try { const latest = await api<ArtifactSnapshot>(key); if (key === base) accept(latest); }
 		catch (e) { if (key === base && e instanceof APIError && [401, 403, 404].includes(e.status)) fail(e); }
-		finally { rechecking = false; }
+		finally { if (rechecking === key) rechecking = ''; }
 		// EventSource stops retrying after an HTTP error such as a proxy 502.
 		if (key === base && source?.readyState === EventSource.CLOSED) {
 			clearTimeout(retry);

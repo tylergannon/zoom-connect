@@ -185,12 +185,27 @@ and WebKit:
   navigated the app page away, all to the beacon host. The sandbox is what
   prevents those.
 
+**Route-change regression** (`scripts/artifact-route-race-proof.mjs`) checks
+that a reply meant for the previous artifact cannot replace the one on screen:
+
+- Artifact A is at v5 and artifact B at v1, in the same call.
+- A loopback proxy drops A's stream and holds the viewer's recheck read for A.
+- An ordinary same-origin link to B is clicked, so the app's router navigates
+  without a document reload.
+- Once B shows, the held read for A is released.
+
+With the earlier viewer, B's URL then showed A's HTML, "Version 5" and A's
+title in Chromium, Firefox and WebKit, failing 3 of 5 checks. The viewer now
+ignores snapshots whose `call_id` or `id` differs from the route, and replies
+or stream events from before the route changed. It passes 5 of 5 checks in all
+three engines, and the main proof still passes 24 of 24 in each.
+
 **Other checks:**
 
-- With the private `TEST_DATABASE_URL`, `go test -p 1 -count=1 ./...` passes:
-  `internal/httpapi` in 18.9 s and `cmd/rtmsrec` in 0.2 s.
-- The three artifact tests pass with `-race -v` in 0.22 s, 0.72 s and 0.62 s,
-  with none skipped.
+- With the private `TEST_DATABASE_URL`, `go test -p 1 -count=1 ./...` passes,
+  with `internal/httpapi` in 21.1 s.
+- The four artifact tests pass with `-race -v` in 0.25 s, 0.73 s, 0.67 s and
+  0.23 s, with none skipped.
 - `go vet ./...` is clean.
 - `vp run check` reports 0 errors and 0 warnings.
 - `vp build` and the binary build succeed.
@@ -202,10 +217,12 @@ cd web && ORIGIN=http://127.0.0.1:57190 vp build && cd ..
 go build -o /tmp/zc/zoom-connect ./cmd
 ZC_BIN=/tmp/zc/zoom-connect DATABASE_URL='postgres://…/scratch_db' \
   node scripts/artifact-browser-proof.mjs chromium   # or firefox, webkit
+ZC_BIN=/tmp/zc/zoom-connect DATABASE_URL='postgres://…/scratch_db' \
+  node scripts/artifact-route-race-proof.mjs chromium   # or firefox, webkit
 ```
 
-The proof creates calls, keys and artifacts in that database, so point it only
-at a scratch database.
+The proofs create calls, keys and artifacts in that database, so point them
+only at a scratch database.
 
 ## Limitations and unproven claims
 
@@ -222,6 +239,10 @@ at a scratch database.
   click. The parent page was unchanged, and app privileges stay blocked. The
   browser proof covers automatic loads, meta refresh, a `target=_top` form and
   `target=_top`/`_blank` links, not every possible navigation.
+- **Route-change guard coverage.** The browser regression covers a delayed
+  recheck read. The guard that ignores events from a replaced stream is not
+  exercised separately, because browsers stop dispatching events once the
+  viewer closes that stream on a route change.
 - **Whole-page updates.** Each version replaces the iframe document, so scroll
   position resets on every update. There is no diff or patch format.
 - **Delivery timing.** Wake-ups are in-process. Other instances, and a viewer
