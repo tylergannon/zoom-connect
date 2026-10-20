@@ -39,7 +39,7 @@
 		stream.onopen = () => streamState = 'live';
 		stream.onerror = () => streamState = 'reconnecting';
 		const refresh = () => { void load(true); };
-		for (const type of ['call.scheduled', 'call.started', 'call.ended', 'call.shared']) stream.addEventListener(type, refresh);
+		for (const type of ['call.scheduled', 'call.cancelled', 'call.started', 'call.ended', 'call.shared']) stream.addEventListener(type, refresh);
 		stream.onmessage = refresh;
 		return () => { stream.close(); clearInterval(timer); };
 	});

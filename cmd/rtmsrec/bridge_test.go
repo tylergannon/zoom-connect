@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -92,5 +93,44 @@ func TestBridgeUsesDurableZoomIdentity(t *testing.T) {
 	}
 	if starts != 2 || stops != 2 || events != 2 {
 		t.Fatalf("starts=%d stops=%d events=%d", starts, stops, events)
+	}
+}
+
+func TestBridgeFallsBackWhenAttachmentUnavailable(t *testing.T) {
+	for _, status := range []int{400, 409, 500} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			attaches, creates, events, stops := 0, 0, 0, 0
+			app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/rtms/streams":
+					attaches++
+					w.WriteHeader(status)
+				case "/api/demo/calls":
+					creates++
+					json.NewEncoder(w).Encode(map[string]string{"id": "standalone"})
+				case "/api/demo/calls/standalone/events":
+					events++
+				case "/api/demo/calls/standalone/stop":
+					stops++
+				default:
+					t.Errorf("unexpected route: %s", r.URL.Path)
+				}
+			}))
+			defer app.Close()
+			b := &liveBridge{base: app.URL, key: "key", client: app.Client(), calls: map[string]string{}, closed: map[string]bool{}}
+			// Three bounded attempts for server errors; client errors fall back on the first attempt.
+			b.start("stream", "12345678901", "runtime")
+			b.start("stream", "12345678901", "runtime")
+			b.start("stream", "12345678901", "runtime")
+			b.text("stream", "transcript", map[string]any{"data": "preserved text"})
+			b.stop("stream", "stopped")
+			want := 1
+			if status == 500 {
+				want = 3
+			}
+			if attaches != want || creates != 1 || events != 1 || stops != 1 {
+				t.Fatalf("attach=%d create=%d text=%d stop=%d", attaches, creates, events, stops)
+			}
+		})
 	}
 }

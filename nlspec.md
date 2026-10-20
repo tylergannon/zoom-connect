@@ -4,6 +4,66 @@ Status: draft v0.2, 2026-10-15. Sole authority for intent; the code is the
 authority for fact. Amend only through spec-defect escalation or by elevating
 demonstrated test cases into claims.
 
+## Scheduled client subscriptions amendment — October 19, 2026
+
+Tyler requested that an existing Zoom invitation can be added to the app so
+clients connect to zoom-connect before the call begins. Clients use one stable
+ULID URL and an authenticated SSE connection, never a direct Zoom connection.
+This amendment governs scheduled subscriptions and supersedes conflicting
+lifecycle and access assumptions in the older draft and product requirements.
+
+Registration is restricted to trusted admins, matching the existing recorder
+and capture-management trust boundary. Registration atomically creates a
+`scheduled` call, an explicit share for the registering account, and the
+`call.scheduled` event. It does not fabricate attendance. Visibility remains
+participant-or-share at every endpoint; creator/host columns alone never grant
+read access. The registrar can share this one call and cancel it while pending.
+Other users and their API keys can connect before start through a share.
+A share applies to one call ULID, never automatically to later sessions using
+the same Zoom meeting number. An invitation is not verified host identity.
+
+The invitation and passcode are discarded after extracting a meeting number.
+Each meeting number permits one pending registration; an existing live call
+does not prevent registering the next session. The optional expected time is
+advisory. SSE stays open while `scheduled` or `live`, including keepalives;
+`Last-Event-ID` takes precedence over the initial `from` query cursor.
+Cancellation atomically stores `call.cancelled` and status `cancelled`, publishes
+the cancellation on both feeds, and closes waiting subscriptions.
+
+The public call ULID, reusable Zoom meeting number, per-session Zoom runtime
+UUID, and per-stream RTMS ID remain distinct. Persist runtime and stream
+mappings. Missing meeting numbers cannot be matched to a pending registration,
+but still capture a standalone call by UUID. A new stream for the same UUID
+reopens its stopped/interrupted call, preserving its URL and original start;
+a client that already received `end` can reconnect to that URL. An old stream
+ID never reopens a call. Stop-before-start records a durable closed-stream
+tombstone and never claims a later pending registration.
+
+A new runtime UUID on a meeting number supersedes the previous instance.
+Its stale live call becomes interrupted with a durable event; its old stream
+rows close. Persist supersession so delayed streams from that older UUID
+cannot close or claim the newer session. A call ends when its last active
+stream stops. Lifecycle and identity changes, every affected event, and
+sequence allocation commit together before publication. All routing assumes
+one application instance, as before. Quiet calls are not timed out merely
+because no transcript text arrives.
+
+Scheduled attachment is best effort for upstream capture: on an HTTP client
+error the recorder captures a standalone call using the existing ingestion
+path. Server/network attachment failures receive at most three attempts before
+that fallback. Do not report standalone fallback as delivery to a pending call.
+Fallback still uses the existing authenticated admin ingestion endpoint.
+
+Behavioral claims: a real handler/database integration demonstrates early
+waiting, transition, first transcript delivery on the same connection,
+cancellation, replay, authorization revocation, duplicate and out-of-order
+notifications, absent meeting numbers, resumed streams, and successive runtime
+UUIDs. A running application demonstrates registration and waiting UI and API
+clients. A real Zoom meeting is required to claim opening-transcript capture
+from Zoom; simulated input is labelled and never substituted for that claim.
+This change does not implement unattended joining, recurring scheduling,
+participant identity matching, or recovery of recorder sockets across deploys.
+
 ## Current prototype amendment — October 16, 2026
 
 Tyler explicitly replaced the draft object-storage requirement for normalized
@@ -485,9 +545,9 @@ lands here.
 2. **Partial transcripts.** Whether Zoom sends in-progress lines. If it
    does, `final:false` events are stored and streamed as-is; whether `txt`
    output should drop them is undecided.
-3. **Re-sent `rtms_started`.** Whether Zoom re-signals a stream after a
-   server outage, and whether the service should then start a second
-   session for the same meeting (new `stream_id`) or refuse.
+3. **Re-sent `rtms_started`.** Resolved for the current prototype by the
+   October 19 amendment: fresh streams resume the same runtime UUID, while
+   duplicate/closed stream IDs remain idempotent. Superseded UUIDs stay closed.
 4. **Billing while idle.** Whether Zoom charges for an auto-started stream
    the service never connects to. Affects whether auto-start should stay the
    default.

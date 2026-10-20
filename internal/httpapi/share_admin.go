@@ -358,6 +358,8 @@ func (a *Server) announcements(w http.ResponseWriter, r *http.Request) {
 				}
 			} else if old.Status == "scheduled" && c.Status == "live" {
 				send("call.started", c)
+			} else if old.Status != c.Status && c.Status == "cancelled" {
+				send("call.cancelled", c)
 			} else if old.Status != c.Status && !callOpen(c.Status) {
 				send("call.ended", c)
 			} else if old.SharedBy == "" && c.SharedBy != "" {

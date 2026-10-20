@@ -96,7 +96,7 @@ func TestStreamSignature(t *testing.T) {
 var _ = http.StatusOK
 
 func TestSignedStartCarriesMeetingNumberToApp(t *testing.T) {
-	for _, number := range []string{`12345678901`, `"12345678901"`} {
+	for _, number := range []string{`12345678901`, `"12345678901"`, `null`} {
 		t.Run(number, func(t *testing.T) {
 			var got zoomIdentity
 			app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +117,11 @@ func TestSignedStartCarriesMeetingNumberToApp(t *testing.T) {
 			req.Header.Set("x-zm-signature", sign("whsec", ts, body))
 			response := httptest.NewRecorder()
 			sv.webhook(response, req)
-			if got.MeetingID != "12345678901" || got.MeetingUUID != "runtime-one" || got.StreamID != "stream-one" {
+			wantNumber := "12345678901"
+			if number == "null" {
+				wantNumber = ""
+			}
+			if got.MeetingID != wantNumber || got.MeetingUUID != "runtime-one" || got.StreamID != "stream-one" {
 				t.Fatalf("identity: %+v", got)
 			}
 			sv.streams["stream-one"].closeAll()

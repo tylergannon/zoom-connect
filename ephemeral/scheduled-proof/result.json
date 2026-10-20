@@ -1,7 +1,7 @@
 {
   "origin": "http://127.0.0.1:8094",
-  "callID": "01M5BA2C4TT9YMKEGMYP4SVZ8D",
-  "meetingID": "82454766606",
+  "callID": "01M5BBCPHMEXHGY507RK71A5A0",
+  "meetingID": "82456153524",
   "proof": "Local production binary with simulated incoming Zoom data; API-key client subscribed before start and received opening words on the same connection",
   "events": [
     "event: call.scheduled",

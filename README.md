@@ -96,12 +96,14 @@ CA to its database TLS trust pool without changing system-wide trust.
 
 ## Add a scheduled call
 
-Choose **Add scheduled call** on the Calls page and paste an existing Zoom
+As an admin, choose **Add scheduled call** on the Calls page and paste an existing Zoom
 invitation or `/j/…` meeting link. Title and expected start time are optional.
 This registers the **next live session on that link**, not a recurring schedule.
 The invitation and embedded passcode are discarded after extracting the meeting
-number. The creator can share or cancel the pending call without being marked
-as a meeting participant.
+number. Registration grants the admin an explicit share for this call; the admin can
+share or cancel it without being marked as a participant. Ordinary users can
+connect before start when shared in, but cannot claim meeting invitations.
+Owner/host fields never grant read access by themselves.
 
 Clients connect only to Zoom Connect. The call page provides a stable URL:
 
@@ -117,7 +119,7 @@ Expected start time is advisory; a late meeting keeps waiting. Reconnect with
 precedence over an initial `?from=` cursor. Cancellation emits `call.cancelled`
 and ends the stream. Access and API-key revocations also disconnect clients.
 
-Applications may register calls with `POST /api/calls` (or `/api/v1/calls`):
+Admin API keys may register calls with `POST /api/calls` (or `/api/v1/calls`):
 
 ```json
 {
@@ -130,11 +132,18 @@ Applications may register calls with `POST /api/calls` (or `/api/v1/calls`):
 The returned `id` works immediately with metadata, sharing and streaming APIs.
 A pending call has `status: "scheduled"` and `started: null`. The optional
 `scheduled_at` is an RFC3339 timestamp. The creator can cancel it with
-`POST /api/calls/{id}/cancel`. Only one pending or live call may use a meeting
-number at a time. The recorder durably attaches the runtime meeting UUID and
+`POST /api/calls/{id}/cancel`. Only one pending registration may use a meeting number at a time;
+a live call does not block registering the next session. The recorder durably attaches the runtime meeting UUID and
 stream IDs to the registered call; duplicate notifications and recorder restarts
 do not create a second call. Concurrent streams remain separate, and the call
-ends when its last stream stops.
+ends when its last stream stops. A fresh stream for that same runtime UUID
+can reopen the call at the same URL; a new meeting UUID instead starts a new
+session and interrupts any stale live predecessor. Delayed streams from a
+superseded UUID cannot interrupt the current session. A missing meeting
+number still captures by UUID but cannot match a pending registration.
+If scheduled attachment returns a client error, or server/network errors
+persist for three attempts, capture falls back to a standalone call. That
+fallback preserves capture but does not deliver into the waiting call.
 
 Saving a link prepares the app's downstream subscription. Upstream capture still
 requires Zoom Connect's RTMS app user to start streaming or join with auto-start

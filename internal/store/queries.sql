@@ -40,7 +40,7 @@ SELECT c.id,c.topic,c.status,c.started,c.ended,c.host_user_id,c.last_seq,c.event
        EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=c.id AND p.user_id=$1) AS is_participant,
        COALESCE((SELECT u2.name FROM shares s JOIN users u2 ON u2.id=s.granted_by WHERE s.call_id=c.id AND s.email=(SELECT email FROM users WHERE id=$1) LIMIT 1), '')::text AS shared_by
 FROM calls c JOIN users u ON u.id=c.host_user_id
-WHERE c.host_user_id=$1 OR EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=c.id AND p.user_id=$1)
+WHERE EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=c.id AND p.user_id=$1)
    OR EXISTS(SELECT 1 FROM shares s WHERE s.call_id=c.id AND (s.grantee_user_id=$1 OR s.email=(SELECT email FROM users WHERE id=$1)))
 ORDER BY COALESCE(c.started,c.scheduled_at) DESC NULLS LAST;
 
@@ -50,8 +50,7 @@ SELECT c.id,c.topic,c.status,c.started,c.ended,c.host_user_id,c.last_seq,c.event
 FROM calls c JOIN users u ON u.id=c.host_user_id WHERE c.id=$1;
 
 -- name: CanAccessCall :one
-SELECT EXISTS(SELECT 1 FROM calls owned WHERE owned.id=sqlc.arg(call_id) AND owned.host_user_id=sqlc.narg(user_id))
-   OR EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=sqlc.arg(call_id) AND p.user_id=sqlc.narg(user_id))
+SELECT EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=sqlc.arg(call_id) AND p.user_id=sqlc.narg(user_id))
    OR EXISTS(SELECT 1 FROM shares s WHERE s.call_id=sqlc.arg(call_id) AND (s.grantee_user_id=sqlc.narg(user_id) OR s.email=(SELECT email FROM users WHERE id=sqlc.narg(user_id))));
 
 -- name: ListParticipants :many

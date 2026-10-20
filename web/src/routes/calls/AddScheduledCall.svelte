@@ -1,11 +1,14 @@
 <script lang="ts">
+ import { onMount } from 'svelte';
  import { goto } from '$app/navigation';
  import { CalendarPlus } from '@lucide/svelte';
  import * as Button from '#lib/components/ui/button';
  import * as Dialog from '#lib/components/ui/dialog';
  import { api, errorMessage } from '#lib/api';
- import type { Call } from '#lib/types';
+ import type { Call, User } from '#lib/types';
  let open = $state(false);
+ let canSchedule = $state(false);
+ onMount(() => { void api<User>('/api/me').then(user => canSchedule=user.is_admin).catch(() => {}); });
  let invitation = $state('');
  let topic = $state('');
  let scheduledAt = $state('');
@@ -21,7 +24,7 @@
   finally { busy = false; }
  }
 </script>
-<Button.Root onclick={() => { error = ''; open = true; }}><CalendarPlus size={15}/> Add scheduled call</Button.Root>
+{#if canSchedule}<Button.Root onclick={() => { error = ''; open = true; }}><CalendarPlus size={15}/> Add scheduled call</Button.Root>{/if}
 <Dialog.Root bind:open>
  <Dialog.Content>
   <Dialog.Header><Dialog.Title>Add a scheduled Zoom call</Dialog.Title><Dialog.Description>Paste an invitation to prepare a call page and stream URL. Clients can connect now and wait for the next live session on this link.</Dialog.Description></Dialog.Header>

@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,12 +19,14 @@ import (
 )
 
 type liveBridge struct {
-	mu        sync.Mutex
-	base, key string
-	client    *http.Client
-	calls     map[string]string
-	closed    map[string]bool
-	meetings  map[string]zoomIdentity
+	mu             sync.Mutex
+	base, key      string
+	client         *http.Client
+	calls          map[string]string
+	closed         map[string]bool
+	meetings       map[string]zoomIdentity
+	attachAttempts map[string]int
+	standalone     map[string]bool
 }
 
 func bridgeFromEnv() *liveBridge {
@@ -60,7 +63,7 @@ func (b *liveBridge) post(path string, body any, out any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		io.Copy(io.Discard, resp.Body)
-		return fmt.Errorf("web app returned %s", resp.Status)
+		return bridgeHTTPError{resp.StatusCode}
 	}
 	if out != nil {
 		return json.NewDecoder(resp.Body).Decode(out)
@@ -68,6 +71,10 @@ func (b *liveBridge) post(path string, body any, out any) error {
 	io.Copy(io.Discard, resp.Body)
 	return nil
 }
+
+type bridgeHTTPError struct{ Status int }
+
+func (e bridgeHTTPError) Error() string { return fmt.Sprintf("web app returned HTTP %d", e.Status) }
 
 type zoomIdentity struct {
 	MeetingID   string `json:"meeting_id"`
@@ -85,15 +92,38 @@ func (b *liveBridge) call(streamID string) (string, error) {
 		StreamStatus string `json:"stream_status"`
 	}
 	var err error
-	if identity, ok := b.meetings[streamID]; ok {
+	identity, identified := b.meetings[streamID]
+	if identified && !b.standalone[streamID] {
 		err = b.post("/api/rtms/streams", identity, &result)
 		if err == nil && (result.Status != "live" || (result.StreamStatus != "" && result.StreamStatus != "live")) {
 			b.closed[streamID] = true
 			return "", fmt.Errorf("Zoom session already ended")
 		}
-	} else {
+		if err != nil {
+			if b.attachAttempts == nil {
+				b.attachAttempts = map[string]int{}
+			}
+			b.attachAttempts[streamID]++
+			var status bridgeHTTPError
+			permanent := errors.As(err, &status) && status.Status >= 400 && status.Status < 500
+			if permanent || b.attachAttempts[streamID] >= 3 {
+				if b.standalone == nil {
+					b.standalone = map[string]bool{}
+				}
+				b.standalone[streamID] = true
+				log.Printf("stream %s: scheduled attachment unavailable; capturing a standalone call", streamID)
+			} else {
+				return "", err
+			}
+		}
+	}
+	if !identified || b.standalone[streamID] {
+		result.ID = ""
+		result.Status = ""
+		result.StreamStatus = ""
 		err = b.post("/api/demo/calls", map[string]any{"topic": "Live Zoom meeting · " + time.Now().Format("3:04 PM"), "source": "zoom"}, &result)
 	}
+
 	if err != nil {
 		return "", err
 	}
@@ -164,7 +194,7 @@ func (b *liveBridge) stop(streamID string, status ...string) {
 	if b.closed[streamID] {
 		return
 	}
-	if len(status) > 0 {
+	if len(status) > 0 && !b.standalone[streamID] {
 		if err := b.post("/api/rtms/streams/"+url.PathEscape(streamID)+"/stop", map[string]string{"status": status[0]}, nil); err != nil {
 			log.Printf("live bridge stop: %v", err)
 			return

@@ -525,8 +525,8 @@ func (sv *server) webhook(w http.ResponseWriter, r *http.Request) {
 		}
 		meetingID := fmt.Sprint(hook.Payload["meeting_id"])
 		if meetingID == "<nil>" || meetingID == "" {
-			log.Print("webhook: rtms_started missing meeting_id")
-			return
+			meetingID = ""
+			log.Print("webhook: no meeting number; capturing by runtime UUID")
 		}
 		// json.Unmarshal represents numbers as float64; avoid exponent notation.
 		if n, ok := hook.Payload["meeting_id"].(float64); ok {

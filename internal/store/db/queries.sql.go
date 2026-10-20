@@ -49,8 +49,7 @@ func (q *Queries) AdvanceEventSeq(ctx context.Context, arg AdvanceEventSeqParams
 }
 
 const canAccessCall = `-- name: CanAccessCall :one
-SELECT EXISTS(SELECT 1 FROM calls owned WHERE owned.id=$1 AND owned.host_user_id=$2)
-   OR EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=$1 AND p.user_id=$2)
+SELECT EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=$1 AND p.user_id=$2)
    OR EXISTS(SELECT 1 FROM shares s WHERE s.call_id=$1 AND (s.grantee_user_id=$2 OR s.email=(SELECT email FROM users WHERE id=$2)))
 `
 
@@ -450,7 +449,7 @@ SELECT c.id,c.topic,c.status,c.started,c.ended,c.host_user_id,c.last_seq,c.event
        EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=c.id AND p.user_id=$1) AS is_participant,
        COALESCE((SELECT u2.name FROM shares s JOIN users u2 ON u2.id=s.granted_by WHERE s.call_id=c.id AND s.email=(SELECT email FROM users WHERE id=$1) LIMIT 1), '')::text AS shared_by
 FROM calls c JOIN users u ON u.id=c.host_user_id
-WHERE c.host_user_id=$1 OR EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=c.id AND p.user_id=$1)
+WHERE EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=c.id AND p.user_id=$1)
    OR EXISTS(SELECT 1 FROM shares s WHERE s.call_id=c.id AND (s.grantee_user_id=$1 OR s.email=(SELECT email FROM users WHERE id=$1)))
 ORDER BY COALESCE(c.started,c.scheduled_at) DESC NULLS LAST
 `

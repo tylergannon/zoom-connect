@@ -17,6 +17,8 @@ func TestInvitationMeetingID(t *testing.T) {
 	for _, test := range []struct{ invite, want string }{
 		{"Join Zoom Meeting\nhttps://us02web.zoom.us/j/12345678901?pwd=secret\nPasscode: secret", "12345678901"},
 		{"https://zoom.us/wc/join/1234567890", "1234567890"},
+		{"https://app.zoom.us/wc/12345678901/join", "12345678901"},
+		{"https://zoom.us/s/12345678901", "12345678901"},
 		{"https://agency.zoomgov.com/j/123456789", "123456789"},
 		{"https://zoom.us.evil.test/j/12345678901", ""},
 		{"https://evilzoom.us/j/12345678901", ""},
@@ -64,24 +66,25 @@ func TestScheduledCallWaitStartReplayAndCancel(t *testing.T) {
 		return raw
 	}
 	body := `{"invitation":"https://us02web.zoom.us/j/12345678901?pwd=must-not-be-stored","topic":"Scheduled integration","scheduled_at":"2099-10-19T20:00:00Z"}`
-	// A non-admin creator owns the record without being falsely marked present.
+	// Only a trusted admin can register; access is an explicit share, not attendance.
 	var call Call
-	json.Unmarshal(post("/api/calls", body, jordan, 201), &call)
+	json.Unmarshal(post("/api/calls", body, dana, 201), &call)
 	if call.Status != "scheduled" || call.Started != nil || len(call.Participants) != 0 || !call.CanShare || !call.IsOwner {
 		t.Fatalf("scheduled metadata: %+v", call)
 	}
+	post("/api/calls", body, jordan, 403)
 	post("/api/calls", body, dana, 409)
-	unauthorized := request(t, server.Client(), "GET", server.URL+"/api/calls/"+call.ID, dana, nil)
+	unauthorized := request(t, server.Client(), "GET", server.URL+"/api/calls/"+call.ID, jordan, nil)
 	unauthorized.Body.Close()
 	if unauthorized.StatusCode != 403 {
 		t.Fatalf("unshared call status: %s", unauthorized.Status)
 	}
 	// Sharing authorizes another user's API key before any meeting participants exist.
-	post("/api/calls/"+call.ID+"/shares", `{"email":"dana@acme.co"}`, jordan, 201)
+	post("/api/calls/"+call.ID+"/shares", `{"email":"jordan@acme.co"}`, dana, 201)
 	var key struct {
 		Secret string `json:"secret"`
 	}
-	json.Unmarshal(post("/api/keys", `{"name":"scheduled client"}`, dana, 201), &key)
+	json.Unmarshal(post("/api/keys", `{"name":"scheduled client"}`, jordan, 201), &key)
 	// Recreate the app handler to prove the pending registration is durable.
 	h, err = New(http.NotFoundHandler())
 	if err != nil {
@@ -159,31 +162,31 @@ func TestScheduledCallWaitStartReplayAndCancel(t *testing.T) {
 	}
 	// Reusing a link registers the next session; replaying the old runtime never claims it.
 	var next Call
-	json.Unmarshal(post("/api/calls", body, jordan, 201), &next)
+	json.Unmarshal(post("/api/calls", body, dana, 201), &next)
 	var oldRuntime Call
 	json.Unmarshal(post("/api/rtms/streams", attach, dana, 200), &oldRuntime)
 	if oldRuntime.ID != call.ID {
 		t.Fatal("old runtime claimed a new scheduled session")
 	}
-	post("/api/calls/"+next.ID+"/cancel", `{}`, dana, 403)
+	post("/api/calls/"+next.ID+"/cancel", `{}`, jordan, 403)
 	// A stop delivered ahead of its start must not claim a pending registration.
 	post("/api/rtms/streams/late-stream/stop", `{"status":"stopped"}`, dana, 200)
-	post("/api/rtms/streams", `{"meeting_id":"12345678901","meeting_uuid":"late-runtime","rtms_stream_id":"late-stream"}`, dana, 409)
+	post("/api/rtms/streams", `{"meeting_id":"12345678901","meeting_uuid":"late-runtime","rtms_stream_id":"late-stream"}`, dana, 200)
 	waitingCtx, waitingCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer waitingCancel()
 	waitingReq, _ := http.NewRequestWithContext(waitingCtx, "GET", restarted.URL+"/api/calls/"+next.ID+"/stream", nil)
-	waitingReq.AddCookie(jordan)
+	waitingReq.AddCookie(dana)
 	waiting, err := restarted.Client().Do(waitingReq)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer waiting.Body.Close()
-	post("/api/calls/"+next.ID+"/cancel", `{}`, jordan, 200)
+	post("/api/calls/"+next.ID+"/cancel", `{}`, dana, 200)
 	cancelledEvents, err := io.ReadAll(waiting.Body)
 	if err != nil || !strings.Contains(string(cancelledEvents), "event: call.cancelled") || !strings.Contains(string(cancelledEvents), "event: end") {
 		t.Fatalf("waiting client cancellation: %s %v", cancelledEvents, err)
 	}
-	ended := request(t, restarted.Client(), "GET", restarted.URL+"/api/calls/"+next.ID+"/stream", jordan, nil)
+	ended := request(t, restarted.Client(), "GET", restarted.URL+"/api/calls/"+next.ID+"/stream", dana, nil)
 	raw, _ = io.ReadAll(ended.Body)
 	ended.Body.Close()
 	if !strings.Contains(string(raw), "event: call.cancelled") || !strings.Contains(string(raw), "event: end") {
