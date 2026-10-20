@@ -3,4 +3,6 @@
 	import CallWorkspace from './CallWorkspace.svelte';
 </script>
 
-<CallWorkspace callId={page.params.id ?? ''} />
+{#key page.params.id}
+	<CallWorkspace callId={page.params.id ?? ''} />
+{/key}
