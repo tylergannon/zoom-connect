@@ -26,7 +26,8 @@ export function relativeDate(value?: string) {
 	if (!value) return '—';
 	return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
-export function duration(start: string, end?: string) {
+export function duration(start: string | null, end?: string) {
+	if (!start) return '—';
 	const seconds = Math.max(0, Math.floor(((end ? new Date(end).getTime() : Date.now()) - new Date(start).getTime()) / 1000));
 	return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }

@@ -74,7 +74,7 @@ func (a *Server) shares(w http.ResponseWriter, r *http.Request) {
 		}
 		shares = append(shares, v)
 	}
-	writeJSON(w, 200, map[string]any{"participants": participants, "shares": shares, "can_share": a.isParticipant(r.Context(), c.ID, p.User.ID)})
+	writeJSON(w, 200, map[string]any{"participants": participants, "shares": shares, "can_share": a.canShareCall(r.Context(), c.ID, p.User.ID)})
 }
 func (a *Server) addShare(w http.ResponseWriter, r *http.Request) {
 	c, ok := a.authorizedCall(w, r)
@@ -82,8 +82,8 @@ func (a *Server) addShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := principal(r)
-	if !a.isParticipant(r.Context(), c.ID, p.User.ID) {
-		jsonError(w, 403, "only call participants can share")
+	if !a.canShareCall(r.Context(), c.ID, p.User.ID) {
+		jsonError(w, 403, "only the call owner or participants can share")
 		return
 	}
 	var in struct {
@@ -275,6 +275,10 @@ func (a *Server) addDemoEvent(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 404, "call not found")
 		return
 	}
+	if c.Status != "live" {
+		jsonError(w, 409, "call is not live")
+		return
+	}
 	var in struct {
 		Kind        string         `json:"kind"`
 		Participant Person         `json:"participant"`
@@ -347,10 +351,14 @@ func (a *Server) announcements(w http.ResponseWriter, r *http.Request) {
 			} else if !exists {
 				if c.Status == "live" {
 					send("call.started", c)
+				} else if c.Status == "scheduled" {
+					send("call.scheduled", c)
 				} else if c.SharedBy != "" {
 					send("call.shared", c)
 				}
-			} else if old.Status == "live" && c.Status != "live" {
+			} else if old.Status == "scheduled" && c.Status == "live" {
+				send("call.started", c)
+			} else if old.Status != c.Status && !callOpen(c.Status) {
 				send("call.ended", c)
 			} else if old.SharedBy == "" && c.SharedBy != "" {
 				send("call.shared", c)

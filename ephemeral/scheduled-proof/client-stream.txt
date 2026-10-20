@@ -1,0 +1,22 @@
+: connected
+
+id: 1
+event: call.scheduled
+data: {"seq":1,"ts":1792454766749,"recv":1792454766749,"kind":"call.scheduled","data":{"scheduled_at":"2026-10-20T15:00:00Z"}}
+
+: keepalive
+
+id: 2
+event: stream.started
+data: {"seq":2,"ts":1792454770132,"recv":1792454770132,"kind":"stream.started","data":{"meeting_uuid":"proof-01M5BA2C4TT9YMKEGMYP4SVZ8D","source":"zoom"}}
+
+id: 3
+event: transcript
+data: {"seq":3,"ts":1792454770146,"recv":1792454770146,"kind":"transcript","participant":{"id":"speaker","name":"Opening speaker","email":""},"data":{"final":true,"text":"Opening words reach clients that connected early."}}
+
+id: 4
+event: stream.stopped
+data: {"seq":4,"ts":1792454770239,"recv":1792454770239,"kind":"stream.stopped","data":{"reason":"Zoom stream stopped"}}
+
+event: end
+data: {}

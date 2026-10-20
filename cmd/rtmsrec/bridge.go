@@ -23,6 +23,7 @@ type liveBridge struct {
 	client    *http.Client
 	calls     map[string]string
 	closed    map[string]bool
+	meetings  map[string]zoomIdentity
 }
 
 func bridgeFromEnv() *liveBridge {
@@ -68,14 +69,31 @@ func (b *liveBridge) post(path string, body any, out any) error {
 	return nil
 }
 
+type zoomIdentity struct {
+	MeetingID   string `json:"meeting_id"`
+	MeetingUUID string `json:"meeting_uuid"`
+	StreamID    string `json:"rtms_stream_id"`
+}
+
 func (b *liveBridge) call(streamID string) (string, error) {
 	if id := b.calls[streamID]; id != "" {
 		return id, nil
 	}
 	var result struct {
-		ID string `json:"id"`
+		ID           string `json:"id"`
+		Status       string `json:"status"`
+		StreamStatus string `json:"stream_status"`
 	}
-	err := b.post("/api/demo/calls", map[string]any{"topic": "Live Zoom meeting · " + time.Now().Format("3:04 PM"), "source": "zoom"}, &result)
+	var err error
+	if identity, ok := b.meetings[streamID]; ok {
+		err = b.post("/api/rtms/streams", identity, &result)
+		if err == nil && (result.Status != "live" || (result.StreamStatus != "" && result.StreamStatus != "live")) {
+			b.closed[streamID] = true
+			return "", fmt.Errorf("Zoom session already ended")
+		}
+	} else {
+		err = b.post("/api/demo/calls", map[string]any{"topic": "Live Zoom meeting · " + time.Now().Format("3:04 PM"), "source": "zoom"}, &result)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -87,12 +105,21 @@ func (b *liveBridge) call(streamID string) (string, error) {
 	return result.ID, nil
 }
 
-func (b *liveBridge) start(streamID string) {
+func (b *liveBridge) start(streamID string, identity ...string) {
 	if b == nil {
 		return
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if len(identity) == 2 {
+		if b.meetings == nil {
+			b.meetings = map[string]zoomIdentity{}
+		}
+		b.meetings[streamID] = zoomIdentity{MeetingID: identity[0], MeetingUUID: identity[1], StreamID: streamID}
+	}
+	if b.closed[streamID] {
+		return
+	}
 	if _, err := b.call(streamID); err != nil {
 		log.Printf("live bridge start: %v", err)
 	}
@@ -128,7 +155,7 @@ func (b *liveBridge) text(streamID, kind string, content map[string]any) {
 	}
 }
 
-func (b *liveBridge) stop(streamID string) {
+func (b *liveBridge) stop(streamID string, status ...string) {
 	if b == nil {
 		return
 	}
@@ -137,7 +164,12 @@ func (b *liveBridge) stop(streamID string) {
 	if b.closed[streamID] {
 		return
 	}
-	if id := b.calls[streamID]; id != "" {
+	if len(status) > 0 {
+		if err := b.post("/api/rtms/streams/"+url.PathEscape(streamID)+"/stop", map[string]string{"status": status[0]}, nil); err != nil {
+			log.Printf("live bridge stop: %v", err)
+			return
+		}
+	} else if id := b.calls[streamID]; id != "" {
 		if err := b.post("/api/demo/calls/"+id+"/stop", map[string]string{}, nil); err != nil {
 			log.Printf("live bridge stop: %v", err)
 			return

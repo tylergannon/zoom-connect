@@ -5,6 +5,7 @@
 	import * as Badge from '#lib/components/ui/badge';
 	import SharingDialog from './SharingDialog.svelte';
 	import ScreenShare from './ScreenShare.svelte';
+	import ScheduledCallNotice from './ScheduledCallNotice.svelte';
 	import { api, APIError, errorMessage, duration, relativeDate, initials } from '#lib/api';
 	import type { Call, EventItem, Person } from '#lib/types';
 
@@ -29,7 +30,7 @@
 	let recheckingAccess = false;
 	const transcriptKinds = new Set(['transcript', 'chat', 'participant.joined', 'participant.left', 'stream.started', 'stream.stopped', 'stream.interrupted', 'speaker.active']);
 	const shownEvents = $derived(events.filter((e) => tab === 'chat' ? e.kind === 'chat' : transcriptKinds.has(e.kind)).filter((e) => !query || `${e.data.text || ''} ${e.kind} ${e.participant?.name || ''}`.toLowerCase().includes(query.toLowerCase())));
-	const showDuration = (started: string, ended?: string) => { tick; return duration(started, ended); };
+	const showDuration = (started: string | null, ended?: string) => { tick; return duration(started, ended); };
 	$effect(() => {
 		const callId = id;
 		if (!callId) return;
@@ -63,13 +64,13 @@
 		} finally { if (callId === id) loading = false; }
 	}
 	function connect(callId: string, from: number) {
-		if (call?.status !== 'live') { streamState = 'ended'; return; }
+		if (call?.status !== 'live' && call?.status !== 'scheduled') { streamState = 'ended'; return; }
 		source?.close();
 		source = new EventSource(`/api/calls/${encodeURIComponent(callId)}/stream?from=${from}`);
 		streamState = 'connecting';
 		source.onopen = () => streamState = 'live';
 		source.onerror = () => { streamState = 'reconnecting'; void recheckAccess(callId); };
-		const finish = async (status?: 'stopped'|'interrupted') => {
+		const finish = async (status?: 'stopped'|'interrupted'|'cancelled') => {
 			if (callId !== id) return;
 			streamState = 'ended';
 			source?.close();
@@ -85,10 +86,12 @@
 				const item = JSON.parse(msg.data) as EventItem;
 				if (callId !== id) return;
 				if (!events.some((e) => e.seq === item.seq)) events = [...events, item].sort((a,b) => a.seq-b.seq);
+				if (item.kind === 'stream.started' && call) { call = {...call, status:'live', started:new Date(item.ts).toISOString()}; }
+				if (item.kind === 'call.cancelled') void finish('cancelled');
 				if (item.kind === 'stream.stopped' || item.kind === 'stream.interrupted') void finish(item.kind === 'stream.stopped' ? 'stopped' : 'interrupted');
 			} catch { /* ignore malformed keepalive */ }
 		};
-		for (const kind of ['transcript','chat','participant.joined','participant.left','stream.started','stream.stopped','stream.interrupted','speaker.active','screen.frame']) source.addEventListener(kind, accept);
+		for (const kind of ['call.scheduled','call.cancelled','transcript','chat','participant.joined','participant.left','stream.started','stream.stopped','stream.interrupted','speaker.active','screen.frame']) source.addEventListener(kind, accept);
 		source.addEventListener('end', () => { void finish(); });
 		source.onmessage = accept;
 	}
@@ -129,28 +132,29 @@
 {:else if missing}<div class="panel empty-state"><h2>Call not found</h2><p>Check the link. Call IDs appear in a URL like <span class="mono">/calls/…</span>.</p><a class="sign-in-link" href="/calls">Back to calls</a></div>
 {:else if error}<div class="panel empty-state"><h2>Couldn't load this call</h2><p>{error}</p><Button.Root onclick={() => load()}><RefreshCw size={15}/> Try again</Button.Root></div>
 {:else if call}
-	<div class="page-head"><div><a class="back-link" href="/calls">← Calls</a><h1>{call.topic}</h1><div class="call-sub"><span>{#if call.status==='live'}<span class="badge-live">● LIVE</span>{:else}<Badge.Badge variant="secondary">{call.status === 'stopped' ? 'Ended' : 'Interrupted'}</Badge.Badge>{/if}</span><span>Started {relativeDate(call.started)}</span><span>· {showDuration(call.started, call.status==='live' ? undefined : call.ended)} elapsed</span><span>Host {call.host.name}</span></div></div>
+	<div class="page-head"><div><a class="back-link" href="/calls">← Calls</a><h1>{call.topic}</h1><div class="call-sub"><span>{#if call.status==='live'}<span class="badge-live">● LIVE</span>{:else}<Badge.Badge variant="secondary">{call.status === 'scheduled' ? 'Scheduled' : call.status === 'cancelled' ? 'Cancelled' : call.status === 'stopped' ? 'Ended' : 'Interrupted'}</Badge.Badge>{/if}</span>{#if call.started}<span>Started {relativeDate(call.started)}</span><span>· {showDuration(call.started, call.status==='live' ? undefined : call.ended)} elapsed</span>{:else if call.scheduled_at}<span>Expected {relativeDate(call.scheduled_at)}</span>{/if}<span>{call.zoom_meeting_id ? 'Added by' : 'Host'} {call.host.name}</span></div></div>
 		<div class="detail-actions"><Button.Root variant="outline" onclick={() => void copyLink()}><Copy size={15}/>Copy link</Button.Root><Button.Root variant="outline" onclick={() => shareOpen=true}><Share2 size={15}/> Share</Button.Root><div class="download-menu"><Button.Root variant="outline" onclick={() => downloadsOpen = !downloadsOpen}><Download size={15}/> Download</Button.Root><div id="download-links" class="download-pop" class:show={downloadsOpen}><a href={`/api/calls/${encodeURIComponent(id)}/transcript?format=txt`}>Plain text <span>.txt</span></a><a href={`/api/calls/${encodeURIComponent(id)}/transcript?format=vtt`}>Subtitles (WebVTT) <span>.vtt</span></a><a href={`/api/calls/${encodeURIComponent(id)}/transcript?format=json`}>Structured events <span>.json</span></a></div></div>
 		</div>
 	</div>
-	<div class="call-stats"><div class="panel stat"><span>Duration</span><b>{showDuration(call.started, call.status==='live' ? undefined : call.ended)}</b></div><div class="panel stat"><span>Participants</span><b>{call.participants.length}</b></div><div class="panel stat"><span>Transcript lines</span><b>{events.filter(e=>e.kind==='transcript').length}</b></div><div class="panel stat"><span>Chat messages</span><b>{events.filter(e=>e.kind==='chat').length}</b></div></div>
+	{#if call.status==='scheduled'}<ScheduledCallNotice {call} oncancelled={() => void load()}/>{/if}
+ <div class="call-stats"><div class="panel stat"><span>Duration</span><b>{showDuration(call.started, call.status==='live' ? undefined : call.ended)}</b></div><div class="panel stat"><span>Participants</span><b>{call.participants.length}</b></div><div class="panel stat"><span>Transcript lines</span><b>{events.filter(e=>e.kind==='transcript').length}</b></div><div class="panel stat"><span>Chat messages</span><b>{events.filter(e=>e.kind==='chat').length}</b></div></div>
 	{#key id}<ScreenShare callId={id} {events}/>{/key}
 	<div class="call-layout">
 		<Card.Root class="transcript-panel">
 			<div class="transcript-toolbar"><div class="tabs-row"><button class:active={tab==='transcript'} onclick={() => tab='transcript'}>Transcript</button><button class:active={tab==='chat'} onclick={() => tab='chat'}>Chat <b>{events.filter(e=>e.kind==='chat').length}</b></button></div><div class="search-wrap"><Search size={15}/><input class="search-input" aria-label="Search transcript" placeholder="Search transcript" bind:value={query}/></div></div>
 			<div class="transcript-body" bind:this={transcriptElement} onscroll={handleTranscriptScroll}>
-				{#if shownEvents.length === 0}<div class="empty-state"><h2>{query ? 'No matches' : tab==='chat' ? 'No chat messages' : 'No transcript yet'}</h2><p>{query ? 'Try a different search.' : call.status==='live' ? 'Transcript updates will appear here.' : 'This call has no saved transcript.'}</p></div>
+				{#if shownEvents.length === 0}<div class="empty-state"><h2>{query ? 'No matches' : tab==='chat' ? 'No chat messages' : 'No transcript yet'}</h2><p>{query ? 'Try a different search.' : call.status==='scheduled' ? 'Waiting for Zoom Connect to receive the meeting stream. Clients can connect using the URL under Agent access.' : call.status==='live' ? 'Transcript updates will appear here.' : 'This call has no saved transcript.'}</p></div>
 				{:else}{#each shownEvents as event (event.seq)}
 					{#if event.kind==='transcript'}<div class="turn"><span class="avatar">{initials(event.participant?.name)}</span><div><div class="turn-head"><b>{event.participant?.name || 'Unknown speaker'}</b><a href={'#t=' + Math.floor(event.ts/1000)} title="Copy timestamp link">{new Date(event.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</a></div><p class:partial={event.data.final===false}>{event.data.text}{#if event.data.final===false}<span class="caret"></span>{/if}</p></div></div>
 					{:else if event.kind==='chat'}<div class="chat-line"><span class="chat-label"><MessageSquare size={12}/> Chat · {event.participant?.name || 'Participant'}</span><span>{event.data.text}</span><small>{new Date(event.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</small></div>
 					{:else}<div class="sys-line">{event.kind.replaceAll('.', ' ')}</div>{/if}
 				{/each}{/if}
 			</div>
-			{#if call.status==='live' || streamState==='ended'}<div class="follow-state"><span class:live-dot={call.status==='live'}></span>{#if call.status!=='live'}{call.status==='interrupted'?'Call interrupted':'Call ended'}{:else if !following}<span>Paused while you read</span><Button.Root variant="ghost" size="sm" onclick={jumpToLive}>Jump to live</Button.Root>{:else}{streamState === 'live' ? 'Following live' : streamState === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}{/if}</div>{/if}
+			{#if call.status==='scheduled' || call.status==='live' || streamState==='ended'}<div class="follow-state"><span class:live-dot={call.status==='live'}></span>{#if call.status==='scheduled'}{streamState==='reconnecting'?'Reconnecting…':streamState==='live'?'Connected · waiting for the meeting':'Connecting…'}{:else if call.status!=='live'}{call.status==='cancelled'?'Scheduled call cancelled':call.status==='interrupted'?'Call interrupted':'Call ended'}{:else if !following}<span>Paused while you read</span><Button.Root variant="ghost" size="sm" onclick={jumpToLive}>Jump to live</Button.Root>{:else}{streamState === 'live' ? 'Following live' : streamState === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}{/if}</div>{/if}
 		</Card.Root>
 		<aside class="detail-side">
 			<Card.Root class="panel-pad"><h2>In this call · {call.participants.length}</h2><div class="people-list">{#each call.participants as person}<div class="person-row"><span class="avatar">{initials(person.name)}</span><span><b>{person.name}</b><small>{person.email || 'Participant'}</small></span>{#if person.id===call.host.id}<span class="badge-muted">Host</span>{/if}</div>{/each}</div></Card.Root>
-			<Card.Root class="panel-pad"><h2>Agent access</h2><p class="muted small">Stream this call with one of your API keys.</p><pre class="code">curl -N -H "Authorization: Bearer $ZC_KEY" {pageOrigin}/api/calls/{call.id}/stream</pre><a class="text-link" href="/keys">Manage keys →</a></Card.Root>
+			<Card.Root class="panel-pad"><h2>Agent access</h2><p class="muted small">Connect with an API key now. This URL waits before the call and delivers events as they arrive.</p><pre class="code">curl -N -H "Authorization: Bearer $ZC_KEY" {pageOrigin}/api/calls/{call.id}/stream</pre><a class="text-link" href="/keys">Manage keys →</a></Card.Root>
 		</aside>
 	</div>
 {/if}

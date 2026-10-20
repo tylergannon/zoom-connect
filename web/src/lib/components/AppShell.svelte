@@ -25,7 +25,7 @@
 		const stream = new EventSource('/api/stream');
 		const update = () => { void refreshCalls(); };
 		stream.onmessage = update;
-		for (const type of ['call.started', 'call.ended', 'call.shared']) stream.addEventListener(type, update);
+		for (const type of ['call.scheduled', 'call.started', 'call.ended', 'call.shared']) stream.addEventListener(type, update);
 		return () => stream.close();
 	});
 	async function refreshCalls() { try { liveCount = (await api<Call[]>('/api/calls')).filter((call) => call.status === 'live').length; } catch { liveCount = 0; } }

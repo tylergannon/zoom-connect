@@ -523,9 +523,18 @@ func (sv *server) webhook(w http.ResponseWriter, r *http.Request) {
 			log.Printf("webhook: rtms_started missing fields; not connecting")
 			return
 		}
-		sv.start(meetingUUID, streamID, serverURL)
+		meetingID := fmt.Sprint(hook.Payload["meeting_id"])
+		if meetingID == "<nil>" || meetingID == "" {
+			log.Print("webhook: rtms_started missing meeting_id")
+			return
+		}
+		// json.Unmarshal represents numbers as float64; avoid exponent notation.
+		if n, ok := hook.Payload["meeting_id"].(float64); ok {
+			meetingID = strconv.FormatInt(int64(n), 10)
+		}
+		sv.start(meetingUUID, streamID, serverURL, meetingID)
 	case "meeting.rtms_stopped", "meeting.rtms_interrupted":
-		sv.cfg.bridge.stop(streamID)
+		sv.cfg.bridge.stop(streamID, strings.TrimPrefix(hook.Event, "meeting.rtms_"))
 		sv.mu.Lock()
 		s := sv.streams[streamID]
 		delete(sv.streams, streamID)
@@ -558,7 +567,7 @@ func (sv *server) verify(r *http.Request, body []byte) error {
 	return nil
 }
 
-func (sv *server) start(meetingUUID, streamID, serverURL string) {
+func (sv *server) start(meetingUUID, streamID, serverURL, meetingID string) {
 	sv.mu.Lock()
 	defer sv.mu.Unlock()
 	if _, ok := sv.streams[streamID]; ok {
@@ -575,7 +584,7 @@ func (sv *server) start(meetingUUID, streamID, serverURL string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &stream{cfg: sv.cfg, meetingUUID: meetingUUID, streamID: streamID, rec: rec, ctx: ctx, cancel: cancel, media: map[string]*websocket.Conn{}}
 	sv.streams[streamID] = s
-	sv.cfg.bridge.start(streamID)
+	sv.cfg.bridge.start(streamID, meetingID, meetingUUID)
 	go s.runSignaling(serverURL)
 }
 

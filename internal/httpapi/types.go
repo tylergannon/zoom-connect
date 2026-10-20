@@ -17,7 +17,10 @@ type Call struct {
 	ID            string     `json:"id"`
 	Topic         string     `json:"topic"`
 	Status        string     `json:"status"`
-	Started       time.Time  `json:"started"`
+	Started       *time.Time `json:"started"`
+	ScheduledAt   *time.Time `json:"scheduled_at,omitempty"`
+	ZoomMeetingID string     `json:"zoom_meeting_id,omitempty"`
+	IsOwner       bool       `json:"is_owner"`
 	Ended         *time.Time `json:"ended,omitempty"`
 	Host          Person     `json:"host"`
 	Participants  []Person   `json:"participants"`

@@ -49,7 +49,8 @@ func (q *Queries) AdvanceEventSeq(ctx context.Context, arg AdvanceEventSeqParams
 }
 
 const canAccessCall = `-- name: CanAccessCall :one
-SELECT EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=$1 AND p.user_id=$2)
+SELECT EXISTS(SELECT 1 FROM calls owned WHERE owned.id=$1 AND owned.host_user_id=$2)
+   OR EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=$1 AND p.user_id=$2)
    OR EXISTS(SELECT 1 FROM shares s WHERE s.call_id=$1 AND (s.grantee_user_id=$2 OR s.email=(SELECT email FROM users WHERE id=$2)))
 `
 
@@ -232,22 +233,25 @@ func (q *Queries) FindKey(ctx context.Context, keyHash string) (ApiKey, error) {
 }
 
 const getCall = `-- name: GetCall :one
-SELECT c.id,c.topic,c.status,c.started,c.ended,c.host_user_id,c.last_seq,c.event_path,
+SELECT c.id,c.topic,c.status,c.started,c.ended,c.host_user_id,c.last_seq,c.event_path,c.scheduled_at,c.zoom_meeting_id,c.zoom_meeting_uuid,
        u.email AS host_email,u.name AS host_name
 FROM calls c JOIN users u ON u.id=c.host_user_id WHERE c.id=$1
 `
 
 type GetCallRow struct {
-	ID         string             `json:"id"`
-	Topic      string             `json:"topic"`
-	Status     string             `json:"status"`
-	Started    pgtype.Timestamptz `json:"started"`
-	Ended      pgtype.Timestamptz `json:"ended"`
-	HostUserID string             `json:"host_user_id"`
-	LastSeq    int64              `json:"last_seq"`
-	EventPath  string             `json:"event_path"`
-	HostEmail  string             `json:"host_email"`
-	HostName   string             `json:"host_name"`
+	ID              string             `json:"id"`
+	Topic           string             `json:"topic"`
+	Status          string             `json:"status"`
+	Started         pgtype.Timestamptz `json:"started"`
+	Ended           pgtype.Timestamptz `json:"ended"`
+	HostUserID      string             `json:"host_user_id"`
+	LastSeq         int64              `json:"last_seq"`
+	EventPath       string             `json:"event_path"`
+	ScheduledAt     pgtype.Timestamptz `json:"scheduled_at"`
+	ZoomMeetingID   pgtype.Text        `json:"zoom_meeting_id"`
+	ZoomMeetingUuid pgtype.Text        `json:"zoom_meeting_uuid"`
+	HostEmail       string             `json:"host_email"`
+	HostName        string             `json:"host_name"`
 }
 
 func (q *Queries) GetCall(ctx context.Context, id string) (GetCallRow, error) {
@@ -262,6 +266,9 @@ func (q *Queries) GetCall(ctx context.Context, id string) (GetCallRow, error) {
 		&i.HostUserID,
 		&i.LastSeq,
 		&i.EventPath,
+		&i.ScheduledAt,
+		&i.ZoomMeetingID,
+		&i.ZoomMeetingUuid,
 		&i.HostEmail,
 		&i.HostName,
 	)
@@ -438,29 +445,32 @@ func (q *Queries) ListCallEvents(ctx context.Context, arg ListCallEventsParams) 
 }
 
 const listCalls = `-- name: ListCalls :many
-SELECT c.id,c.topic,c.status,c.started,c.ended,c.host_user_id,c.last_seq,c.event_path,
+SELECT c.id,c.topic,c.status,c.started,c.ended,c.host_user_id,c.last_seq,c.event_path,c.scheduled_at,c.zoom_meeting_id,c.zoom_meeting_uuid,
        u.email AS host_email,u.name AS host_name,
        EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=c.id AND p.user_id=$1) AS is_participant,
        COALESCE((SELECT u2.name FROM shares s JOIN users u2 ON u2.id=s.granted_by WHERE s.call_id=c.id AND s.email=(SELECT email FROM users WHERE id=$1) LIMIT 1), '')::text AS shared_by
 FROM calls c JOIN users u ON u.id=c.host_user_id
-WHERE EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=c.id AND p.user_id=$1)
+WHERE c.host_user_id=$1 OR EXISTS(SELECT 1 FROM call_participants p WHERE p.call_id=c.id AND p.user_id=$1)
    OR EXISTS(SELECT 1 FROM shares s WHERE s.call_id=c.id AND (s.grantee_user_id=$1 OR s.email=(SELECT email FROM users WHERE id=$1)))
-ORDER BY c.started DESC
+ORDER BY COALESCE(c.started,c.scheduled_at) DESC NULLS LAST
 `
 
 type ListCallsRow struct {
-	ID            string             `json:"id"`
-	Topic         string             `json:"topic"`
-	Status        string             `json:"status"`
-	Started       pgtype.Timestamptz `json:"started"`
-	Ended         pgtype.Timestamptz `json:"ended"`
-	HostUserID    string             `json:"host_user_id"`
-	LastSeq       int64              `json:"last_seq"`
-	EventPath     string             `json:"event_path"`
-	HostEmail     string             `json:"host_email"`
-	HostName      string             `json:"host_name"`
-	IsParticipant bool               `json:"is_participant"`
-	SharedBy      string             `json:"shared_by"`
+	ID              string             `json:"id"`
+	Topic           string             `json:"topic"`
+	Status          string             `json:"status"`
+	Started         pgtype.Timestamptz `json:"started"`
+	Ended           pgtype.Timestamptz `json:"ended"`
+	HostUserID      string             `json:"host_user_id"`
+	LastSeq         int64              `json:"last_seq"`
+	EventPath       string             `json:"event_path"`
+	ScheduledAt     pgtype.Timestamptz `json:"scheduled_at"`
+	ZoomMeetingID   pgtype.Text        `json:"zoom_meeting_id"`
+	ZoomMeetingUuid pgtype.Text        `json:"zoom_meeting_uuid"`
+	HostEmail       string             `json:"host_email"`
+	HostName        string             `json:"host_name"`
+	IsParticipant   bool               `json:"is_participant"`
+	SharedBy        string             `json:"shared_by"`
 }
 
 func (q *Queries) ListCalls(ctx context.Context, userID pgtype.Text) ([]ListCallsRow, error) {
@@ -481,6 +491,9 @@ func (q *Queries) ListCalls(ctx context.Context, userID pgtype.Text) ([]ListCall
 			&i.HostUserID,
 			&i.LastSeq,
 			&i.EventPath,
+			&i.ScheduledAt,
+			&i.ZoomMeetingID,
+			&i.ZoomMeetingUuid,
 			&i.HostEmail,
 			&i.HostName,
 			&i.IsParticipant,

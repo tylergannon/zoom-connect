@@ -94,3 +94,33 @@ func TestStreamSignature(t *testing.T) {
 }
 
 var _ = http.StatusOK
+
+func TestSignedStartCarriesMeetingNumberToApp(t *testing.T) {
+	for _, number := range []string{`12345678901`, `"12345678901"`} {
+		t.Run(number, func(t *testing.T) {
+			var got zoomIdentity
+			app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/rtms/streams" {
+					t.Errorf("unexpected path: %s", r.URL.Path)
+				}
+				json.NewDecoder(r.Body).Decode(&got)
+				json.NewEncoder(w).Encode(map[string]string{"id": "scheduled-one", "status": "live", "stream_status": "live"})
+			}))
+			defer app.Close()
+			sv := newTestServer(t)
+			sv.cfg.recDir = t.TempDir()
+			sv.cfg.bridge = &liveBridge{base: app.URL, key: "key", client: app.Client(), calls: map[string]string{}, closed: map[string]bool{}}
+			body := `{"event":"meeting.rtms_started","payload":{"meeting_id":` + number + `,"meeting_uuid":"runtime-one","rtms_stream_id":"stream-one","server_urls":"ws://127.0.0.1:1"}}`
+			ts := strconv.FormatInt(time.Now().Unix(), 10)
+			req := httptest.NewRequest("POST", "/zoom/webhook", strings.NewReader(body))
+			req.Header.Set("x-zm-request-timestamp", ts)
+			req.Header.Set("x-zm-signature", sign("whsec", ts, body))
+			response := httptest.NewRecorder()
+			sv.webhook(response, req)
+			if got.MeetingID != "12345678901" || got.MeetingUUID != "runtime-one" || got.StreamID != "stream-one" {
+				t.Fatalf("identity: %+v", got)
+			}
+			sv.streams["stream-one"].closeAll()
+		})
+	}
+}

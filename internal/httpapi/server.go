@@ -87,6 +87,10 @@ func (a *Server) routes(m *http.ServeMux) {
 	priv("GET /api/me", a.me)
 	priv("POST /api/logout", a.logout)
 	priv("GET /api/calls", a.calls)
+	priv("POST /api/calls", a.scheduleCall)
+	priv("POST /api/calls/{id}/cancel", a.cancelScheduledCall)
+	priv("POST /api/rtms/streams", a.attachRTMSStream)
+	priv("POST /api/rtms/streams/{streamId}/stop", a.stopRTMSStream)
 	priv("GET /api/calls/{id}", a.call)
 	priv("GET /api/calls/{id}/events", a.events)
 	priv("GET /api/calls/{id}/stream", a.stream)
@@ -112,6 +116,8 @@ func (a *Server) routes(m *http.ServeMux) {
 	}
 	// The agent guide uses /api/v1; keep the same access and representation rules.
 	priv("GET /api/v1/calls", a.calls)
+	priv("POST /api/v1/calls", a.scheduleCall)
+	priv("POST /api/v1/calls/{id}/cancel", a.cancelScheduledCall)
 	priv("GET /api/v1/calls/{id}", a.call)
 	priv("GET /api/v1/calls/{id}/events", a.events)
 	priv("GET /api/v1/calls/{id}/stream", a.stream)
@@ -453,7 +459,7 @@ func (a *Server) toCall(ctx context.Context, c db.GetCallRow, p Principal) Call 
 		t := c.Ended.Time
 		end = &t
 	}
-	return Call{ID: c.ID, Topic: c.Topic, Status: c.Status, Started: c.Started.Time, Ended: end, Host: Person{ID: c.HostUserID, Name: c.HostName, Email: c.HostEmail}, Participants: people, LastSeq: c.LastSeq, LatestEvent: a.latestEvent(ctx, c.ID), IsParticipant: a.isParticipant(ctx, c.ID, p.User.ID), CanShare: a.isParticipant(ctx, c.ID, p.User.ID)}
+	return Call{ID: c.ID, Topic: c.Topic, Status: c.Status, Started: nullableTime(c.Started), ScheduledAt: nullableTime(c.ScheduledAt), ZoomMeetingID: c.ZoomMeetingID.String, IsOwner: c.HostUserID == p.User.ID, Ended: end, Host: Person{ID: c.HostUserID, Name: c.HostName, Email: c.HostEmail}, Participants: people, LastSeq: c.LastSeq, LatestEvent: a.latestEvent(ctx, c.ID), IsParticipant: a.isParticipant(ctx, c.ID, p.User.ID), CanShare: c.HostUserID == p.User.ID || a.isParticipant(ctx, c.ID, p.User.ID)}
 }
 
 func (a *Server) latestEvent(ctx context.Context, id string) *Event {
@@ -487,7 +493,7 @@ func (a *Server) calls(w http.ResponseWriter, r *http.Request) {
 		for _, q := range people {
 			ps = append(ps, Person{ID: q.ParticipantID, Name: q.Name, Email: q.Email.String})
 		}
-		out = append(out, Call{ID: row.ID, Topic: row.Topic, Status: row.Status, Started: row.Started.Time, Ended: end, Host: Person{ID: row.HostUserID, Name: row.HostName, Email: row.HostEmail}, Participants: ps, LastSeq: row.LastSeq, LatestEvent: a.latestEvent(r.Context(), row.ID), SharedBy: row.SharedBy, IsParticipant: row.IsParticipant, CanShare: row.IsParticipant})
+		out = append(out, Call{ID: row.ID, Topic: row.Topic, Status: row.Status, Started: nullableTime(row.Started), ScheduledAt: nullableTime(row.ScheduledAt), ZoomMeetingID: row.ZoomMeetingID.String, IsOwner: row.HostUserID == p.User.ID, Ended: end, Host: Person{ID: row.HostUserID, Name: row.HostName, Email: row.HostEmail}, Participants: ps, LastSeq: row.LastSeq, LatestEvent: a.latestEvent(r.Context(), row.ID), SharedBy: row.SharedBy, IsParticipant: row.IsParticipant, CanShare: row.IsParticipant || row.HostUserID == p.User.ID})
 	}
 	writeJSON(w, 200, out)
 }
@@ -521,9 +527,9 @@ func (a *Server) events(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, events)
 }
 func parseFrom(r *http.Request) (int64, error) {
-	v := r.URL.Query().Get("from")
+	v := r.Header.Get("Last-Event-ID")
 	if v == "" {
-		v = r.Header.Get("Last-Event-ID")
+		v = r.URL.Query().Get("from")
 	}
 	var n int64
 	_, e := fmt.Sscan(v, &n)
@@ -569,7 +575,7 @@ func (a *Server) stream(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if c.Status != "live" {
+	if !callOpen(c.Status) {
 		_, _ = fmt.Fprint(w, "event: end\ndata: {}\n\n")
 		fl.Flush()
 		return
@@ -587,7 +593,7 @@ func (a *Server) stream(w http.ResponseWriter, r *http.Request) {
 			if !send(e) {
 				return
 			}
-			if e.Kind == "stream.stopped" || e.Kind == "stream.interrupted" {
+			if e.Kind == "stream.stopped" || e.Kind == "stream.interrupted" || e.Kind == "call.cancelled" {
 				_, _ = fmt.Fprint(w, "event: end\ndata: {}\n\n")
 				fl.Flush()
 				return
@@ -597,7 +603,7 @@ func (a *Server) stream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			current, e := a.s.Q.GetCall(r.Context(), id)
-			if e == nil && current.Status != "live" {
+			if e == nil && !callOpen(current.Status) {
 				_, _ = fmt.Fprint(w, "event: end\ndata: {}\n\n")
 				fl.Flush()
 				return
@@ -754,3 +760,11 @@ var _ = digest
 var _ = logf
 var _ = _ignore
 var _ = errors.Is
+
+func nullableTime(t pgtype.Timestamptz) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	v := t.Time
+	return &v
+}
