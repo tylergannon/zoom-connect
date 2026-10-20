@@ -1,0 +1,13 @@
+: connected
+
+id: 4
+event: stream.paused
+data: {"seq":4,"ts":1792459359969,"recv":1792459359969,"kind":"stream.paused","data":{"reason":"Zoom connection interrupted; waiting up to two minutes for recovery"}}
+
+id: 5
+event: stream.stopped
+data: {"seq":5,"ts":1792459360035,"recv":1792459360035,"kind":"stream.stopped","data":{"reason":"Zoom stream stopped"}}
+
+event: end
+data: {}
+

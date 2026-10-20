@@ -1,0 +1,16 @@
+{
+  "callID": "01M5BDKQBJNK2V8FD0ENTBX6J0",
+  "realZoom": true,
+  "sameClientConnectedBeforeStart": true,
+  "startChatStopEndOnSameConnection": true,
+  "persistedStatus": "stopped",
+  "persistedEventCount": 5,
+  "contiguousSequences": true,
+  "lastEventIDReplay": true,
+  "realSpeechCaptureVerified": false,
+  "speechAttempt": "Generated phrase playback attempted; Zoom desktop became unresponsive when starting computer-audio sharing. No transcript received.",
+  "zoomMeetingEnded": true,
+  "health": {
+    "status": "ok"
+  }
+}

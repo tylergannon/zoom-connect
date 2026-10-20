@@ -2,6 +2,7 @@ import { chromium } from '../web/node_modules/playwright/index.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const proof=JSON.parse(await readFile('ephemeral/scheduled-real-zoom-proof/result.json','utf8'));
+const ended=process.argv.includes('--ended');
 const browser=await chromium.launch({headless:true});
 try {
  const context=await browser.newContext({viewport:{width:1360,height:1000}});
@@ -12,9 +13,10 @@ try {
  await page.getByRole('heading',{name:'Real Zoom verification: pre-start client',exact:true}).waitFor();
  await page.getByRole('button',{name:/^Chat /}).click();
  await page.getByText('Scheduled stream verification: client connected before this meeting started.',{exact:true}).waitFor();
- await page.screenshot({path:'ephemeral/scheduled-real-zoom-proof/live-chat.png',fullPage:true,animations:'disabled'});
+ if(ended) await page.getByText('Ended',{exact:true}).waitFor();
+ await page.screenshot({path:'ephemeral/scheduled-real-zoom-proof/'+(ended?'ended.png':'live-chat.png'),fullPage:true,animations:'disabled'});
  const call=await (await context.request.get(proof.origin+'/api/calls/'+proof.callID)).json();
- assert.equal(call.id,proof.callID);assert.deepEqual(errors,[]);
- await writeFile('ephemeral/scheduled-real-zoom-proof/browser.json',JSON.stringify({callID:call.id,status:call.status,browserErrors:errors,realZoomChatVisible:true},null,2)+'\n');
+ assert.equal(call.id,proof.callID);if(ended)assert.equal(call.status,'stopped');assert.deepEqual(errors,[]);
+ await writeFile('ephemeral/scheduled-real-zoom-proof/'+(ended?'browser-ended.json':'browser.json'),JSON.stringify({callID:call.id,status:call.status,browserErrors:errors,realZoomChatVisible:true},null,2)+'\n');
  console.log('PASS: real Zoom chat appears in the registered call page.');
 } finally {await browser.close();}

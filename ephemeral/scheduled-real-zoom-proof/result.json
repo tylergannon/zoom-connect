@@ -19,9 +19,25 @@
       "kind": "chat",
       "seq": 3,
       "receivedAt": "2026-10-20T01:10:52.502880+00:00"
+    },
+    {
+      "kind": "stream.paused",
+      "seq": 4,
+      "receivedAt": "2026-10-20T01:22:40.048575+00:00"
+    },
+    {
+      "kind": "stream.stopped",
+      "seq": 5,
+      "receivedAt": "2026-10-20T01:22:40.102857+00:00"
+    },
+    {
+      "kind": "end",
+      "seq": null,
+      "receivedAt": "2026-10-20T01:22:40.103364+00:00"
     }
   ],
   "realZoom": true,
   "clientConnectedAt": "2026-10-20T01:08:01.380289+00:00",
-  "liveTransition": true
+  "liveTransition": true,
+  "ended": true
 }
