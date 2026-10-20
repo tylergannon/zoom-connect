@@ -132,6 +132,7 @@ func (a *Server) routes(m *http.ServeMux) {
 		priv("GET "+base+"/{artifactId}", a.getArtifact)
 		priv("PUT "+base+"/{artifactId}", a.updateArtifact)
 		priv("GET "+base+"/{artifactId}/stream", a.artifactStream)
+		priv("GET "+base+"/{artifactId}/versions", a.listArtifactVersions)
 		priv("GET "+base+"/{artifactId}/versions/{version}", a.getArtifactVersion)
 	}
 }

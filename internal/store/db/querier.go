@@ -36,6 +36,7 @@ type Querier interface {
 	InsertArtifactVersion(ctx context.Context, arg InsertArtifactVersionParams) error
 	InsertCallEvent(ctx context.Context, arg InsertCallEventParams) error
 	LatestTranscript(ctx context.Context, callID string) (LatestTranscriptRow, error)
+	ListArtifactVersions(ctx context.Context, arg ListArtifactVersionsParams) ([]ListArtifactVersionsRow, error)
 	ListCallArtifacts(ctx context.Context, callID string) ([]ListCallArtifactsRow, error)
 	ListCallEvents(ctx context.Context, arg ListCallEventsParams) ([]ListCallEventsRow, error)
 	ListCalls(ctx context.Context, userID pgtype.Text) ([]ListCallsRow, error)
@@ -45,7 +46,6 @@ type Querier interface {
 	ListShares(ctx context.Context, callID string) ([]ListSharesRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	LockCallStatus(ctx context.Context, id string) (string, error)
-	PruneArtifactVersions(ctx context.Context, arg PruneArtifactVersionsParams) error
 	ReserveEventSeq(ctx context.Context, id string) (int64, error)
 	RevokeKey(ctx context.Context, arg RevokeKeyParams) error
 	SearchPeople(ctx context.Context, lower string) ([]User, error)

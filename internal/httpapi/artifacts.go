@@ -19,12 +19,14 @@ import (
 )
 
 // Prototype bounds; the HTML and title limits are repeated as table checks.
+// Every version is kept as call history, so versions per page are not capped.
 const (
 	maxArtifactHTML     = 256 << 10
 	maxArtifactBody     = 1 << 20
 	maxArtifactTitle    = 120
 	maxArtifactsPerCall = 10
-	keptArtifactVersion = 25
+	artifactHistoryPage = 50
+	maxArtifactHistory  = 100
 )
 
 var errArtifactNotFound = errors.New("artifact not found")
@@ -234,6 +236,64 @@ func (a *Server) getArtifactVersion(w http.ResponseWriter, r *http.Request) {
 	writeArtifactJSON(w, 200, map[string]any{"artifact_id": r.PathValue("artifactId"), "call_id": c.ID, "version": row.Version, "title": row.Title, "html": row.Html, "created_at": row.CreatedAt.Time, "author": artifactPerson(row.AuthorID, row.AuthorName), "via": row.KeyName.String})
 }
 
+// ArtifactVersionInfo describes one stored version without its HTML.
+type ArtifactVersionInfo struct {
+	Version   int64     `json:"version"`
+	Title     string    `json:"title"`
+	Bytes     int64     `json:"bytes"`
+	CreatedAt time.Time `json:"created_at"`
+	Author    Person    `json:"author"`
+	Via       string    `json:"via,omitempty"`
+}
+
+// listArtifactVersions pages through stored versions, newest first.
+// ?before=N starts below version N; next_before continues the listing.
+// Versions removed by the prototype's earlier 25-version limit leave gaps.
+func (a *Server) listArtifactVersions(w http.ResponseWriter, r *http.Request) {
+	c, ok := a.authorizedCall(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("artifactId")
+	current, err := a.s.Q.CallArtifactVersion(r.Context(), db.CallArtifactVersionParams{ID: id, CallID: c.ID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		jsonError(w, 404, "artifact not found")
+		return
+	}
+	if err != nil {
+		jsonError(w, 500, "database error")
+		return
+	}
+	before, limit := current+1, int64(artifactHistoryPage)
+	if v := r.URL.Query().Get("before"); v != "" {
+		if before, err = strconv.ParseInt(v, 10, 64); err != nil || before < 1 {
+			jsonError(w, 400, "before must be a positive integer")
+			return
+		}
+	}
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if limit, err = strconv.ParseInt(v, 10, 64); err != nil || limit < 1 || limit > maxArtifactHistory {
+			jsonError(w, 400, fmt.Sprintf("limit must be between 1 and %d", maxArtifactHistory))
+			return
+		}
+	}
+	rows, err := a.s.Q.ListArtifactVersions(r.Context(), db.ListArtifactVersionsParams{ArtifactID: id, CallID: c.ID, Version: before, Limit: int32(limit + 1)})
+	if err != nil {
+		jsonError(w, 500, "database error")
+		return
+	}
+	var next *int64
+	if int64(len(rows)) > limit {
+		rows = rows[:limit]
+		next = &rows[limit-1].Version
+	}
+	out := make([]ArtifactVersionInfo, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ArtifactVersionInfo{Version: row.Version, Title: row.Title, Bytes: row.Bytes, CreatedAt: row.CreatedAt.Time, Author: artifactPerson(row.AuthorID, row.AuthorName), Via: row.KeyName.String})
+	}
+	writeArtifactJSON(w, 200, map[string]any{"artifact_id": id, "call_id": c.ID, "current_version": current, "versions": out, "next_before": next})
+}
+
 func (a *Server) createArtifact(w http.ResponseWriter, r *http.Request) {
 	c, ok := a.artifactWriter(w, r)
 	if !ok {
@@ -343,9 +403,6 @@ func (a *Server) writeArtifact(ctx context.Context, callID string, step func(*db
 	}
 	key := pgtype.Text{String: p.KeyName, Valid: p.IsKey}
 	if err = q.InsertArtifactVersion(ctx, db.InsertArtifactVersionParams{ArtifactID: id, Version: version, Title: title, Html: html, AuthorID: p.User.ID, KeyName: key}); err != nil {
-		return ArtifactSnapshot{}, 0, "", err
-	}
-	if err = q.PruneArtifactVersions(ctx, db.PruneArtifactVersionsParams{ArtifactID: id, Version: version - keptArtifactVersion}); err != nil {
 		return ArtifactSnapshot{}, 0, "", err
 	}
 	s, err := a.loadArtifact(ctx, q, callID, id)

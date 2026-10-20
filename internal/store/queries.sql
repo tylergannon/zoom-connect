@@ -126,8 +126,11 @@ SELECT version FROM call_artifacts WHERE id=$1 AND call_id=$2;
 -- name: InsertArtifactVersion :exec
 INSERT INTO call_artifact_versions(artifact_id,version,title,html,author_id,key_name) VALUES($1,$2,$3,$4,$5,$6);
 
--- name: PruneArtifactVersions :exec
-DELETE FROM call_artifact_versions WHERE artifact_id=$1 AND version<=$2;
+-- name: ListArtifactVersions :many
+SELECT v.version,v.title,octet_length(v.html)::bigint AS bytes,v.key_name,v.created_at,u.id AS author_id,u.name AS author_name
+FROM call_artifact_versions v JOIN call_artifacts a ON a.id=v.artifact_id JOIN users u ON u.id=v.author_id
+WHERE v.artifact_id=$1 AND a.call_id=$2 AND v.version<$3
+ORDER BY v.version DESC LIMIT $4;
 
 -- name: GetCallArtifact :one
 SELECT a.id,a.call_id,a.version,a.created_at,cu.id AS created_by_id,cu.name AS created_by_name,

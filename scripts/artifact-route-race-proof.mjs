@@ -3,7 +3,7 @@
 // A loopback proxy drops A's stream, holds the recheck read for A, and only
 // releases it once B is showing.
 //
-//   ZC_BIN=/tmp/zc-live-artifacts/zoom-connect \
+//   ZC_BIN=/tmp/zc-embedded/zoom-connect \
 //   DATABASE_URL='postgres://zoom:zoom@127.0.0.1:56996/zoom_connect_artifacts_demo?sslmode=disable' \
 //   node scripts/artifact-route-race-proof.mjs [chromium|firefox|webkit]
 //
@@ -79,13 +79,8 @@ try {
 	for (let i = 0; i < 100 && held.length === 0; i++) await sleep(100);
 	check('recheck read for A is held', held.length === 1, `held reads: ${held.length}`);
 
-	// Navigate with an ordinary same-origin link click, which the app's router handles.
-	await page.evaluate((href) => {
-		const link = document.createElement('a');
-		link.href = href; link.id = 'to-b'; link.textContent = 'Artifact B';
-		document.querySelector('.page-head').append(link);
-	}, b.viewer_url);
-	await page.click('#to-b');
+	// Select B in the call's page list, which the app's router handles in place.
+	await page.locator(`.page-row[data-artifact-id="${b.id}"]`).click();
 	await headline.filter({ hasText: 'Artifact B v1' }).waitFor({ timeout: 10000 });
 	const sameDocument = await page.evaluate(() => window.__sameDocument);
 	check('B shown after client-side navigation', new URL(page.url()).pathname === b.viewer_url && sameDocument === 'yes', `path ${new URL(page.url()).pathname}, same document: ${sameDocument}`);
@@ -98,7 +93,9 @@ try {
 	const version = (await badge.textContent({ timeout: 2000 }).catch(() => null))?.trim();
 	check('B content kept after stale A read', text === 'Artifact B v1', `headline: ${text}`);
 	check('B version kept after stale A read', version === 'Version 1', `badge: ${version}`);
-	check('page title is B', (await page.title()).startsWith('Artifact B'), `title: ${await page.title()}`);
+	const title = (await page.getByTestId('artifact-title').textContent({ timeout: 2000 }).catch(() => null))?.trim();
+	const active = (await page.locator('.page-row.active b').textContent({ timeout: 2000 }).catch(() => null))?.trim();
+	check('pane title and selected row are B', title === 'Artifact B' && active === 'Artifact B', `title: ${title}, selected: ${active}`);
 } finally {
 	await browser?.close();
 	server.kill('SIGKILL');

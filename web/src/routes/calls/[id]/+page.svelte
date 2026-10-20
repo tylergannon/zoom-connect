@@ -1,6 +1,1 @@
-<script lang="ts">
-	import { page } from '$app/state';
-	import CallWorkspace from './CallWorkspace.svelte';
-</script>
-
-<CallWorkspace callId={page.params.id ?? ''} />
+<!-- The call view is rendered by +layout.svelte. -->

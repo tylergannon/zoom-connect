@@ -10,8 +10,12 @@ share their window in Zoom so other participants watch it change.
 
 **Resource.** An artifact belongs to exactly one call. It has an id, a title
 and a monotonically increasing `version`. Each create or update stores an
-immutable snapshot `{version, title, html, author, key name, time}`. The
-newest 25 snapshots are kept; older ones are deleted.
+immutable snapshot `{version, title, html, author, key name, time}`. The id
+never changes, so one page stays one row however often it is updated. Every
+snapshot is kept with the call as its history; nothing is pruned. An earlier
+build of this prototype kept only the newest 25 snapshots and deleted older
+ones. Those deleted versions cannot be recovered, so a page made by that build
+can have a history that starts above version 1.
 
 **Credentials.** The existing ones only: `Authorization: Bearer <API key>` (the
 key acts as its owner) or the browser session cookie. No new credential type,
@@ -38,7 +42,8 @@ read-only: updates return 409 and reads keep working for everyone with access.
 | `POST /api/calls/{id}/artifacts` | `{"title","html"}` | 201, snapshot, `Location` header |
 | `GET /api/calls/{id}/artifacts/{artifactId}` | | 200, latest snapshot |
 | `PUT /api/calls/{id}/artifacts/{artifactId}` | `{"base_version","html","title"?}` | 200, new snapshot |
-| `GET /api/calls/{id}/artifacts/{artifactId}/versions/{n}` | | 200, retained snapshot |
+| `GET /api/calls/{id}/artifacts/{artifactId}/versions` | `?before=`, `?limit=` | 200, one page of version metadata, newest first |
+| `GET /api/calls/{id}/artifacts/{artifactId}/versions/{n}` | | 200, stored snapshot (404 if never stored or deleted by the earlier build) |
 | `GET /api/calls/{id}/artifacts/{artifactId}/stream` | `Last-Event-ID` or `?from=` | `text/event-stream` |
 
 A snapshot is the metadata plus `html`:
@@ -55,6 +60,21 @@ A snapshot is the metadata plus `html`:
 `updated_via` is the API key name when a key made the latest version. It is
 left out for browser sessions.
 
+**History.** The version list has no `html`:
+
+```json
+{"artifact_id":"01M5DE92TF…","call_id":"01M5DE92RM…","current_version":60,
+ "versions":[{"version":60,"title":"Board 60","bytes":10,"created_at":"…",
+   "author":{"id":"u-dana","name":"Dana Kim"},"via":"meeting-agent"}, …],
+ "next_before":11}
+```
+
+It lists stored versions below `before` (default: all), newest first, `limit`
+per page (1–100, default 50). `next_before` is the `before` value for the next
+older page, or `null` when there is none. Bad `before` or `limit` values get
+400. The call ACL applies as for reads: 401, 403, and 404 for an artifact id
+under another call. There is no restore or delete endpoint.
+
 **Optimistic concurrency.** `PUT` must name the version it replaces. If another
 write got there first, nothing is stored and the response is
 `409 {"error":"version conflict","current_version":N,"base_version":B}`. The
@@ -64,7 +84,9 @@ writer re-reads and retries. Leaving out `title` keeps the current title.
 `title` is 1–120 characters with no control characters (400). NUL bytes,
 unknown JSON fields, a missing `html` and a missing or non-positive
 `base_version` are rejected (400). At most 10 artifacts per call (409). The
-database repeats the size and title bounds as constraints.
+database repeats the size and title bounds as constraints. The number of
+versions per artifact is not capped, so storage for a call grows with every
+update (each at most 256 KiB); see the POC notes.
 
 **Stream.** The stream follows the call stream's format. It starts with
 `: connected`, then sends `id: <version>` / `event: artifact` /
@@ -83,7 +105,7 @@ separate instance, still delivers within that interval.
 
 **Rendering rule.** The HTML is untrusted. The API only returns it as a JSON
 string, with `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
-It is never served as an HTML document on the app origin. The viewer renders it
+It is never served as an HTML document on the app origin. The call view renders it
 in `<iframe sandbox="" srcdoc=…>`, which gives it an opaque origin with no
 scripts, forms, popups, top navigation or access to the app page. A leading
 `Content-Security-Policy` meta tag restricts the page's own subresource loads
@@ -100,8 +122,10 @@ page's privileges stay blocked.
   the SSE conventions of `/api/calls/{id}/stream`, and Postgres via
   migrations and sqlc (`store`).
 - **Added:** migration `004_call_artifacts.sql` and the endpoints above (`api`),
-  plus one viewer route and a call-page card (`web`).
+  plus a Pages section in the call view whose viewer links select a page in
+  place (`web`).
 - **Unchanged:** no Zoom API, scope, webhook or RTMS behavior changes. Presenting
   is an ordinary Zoom screen or window share done by a person.
-- **Deferred:** deleting artifacts, rate limits, interactive (scripted)
+- **Deferred:** deleting artifacts or versions, restoring an older version,
+  a cap or retention policy for versions, rate limits, interactive (scripted)
   artifacts, partial updates, and publishing artifacts after a call ends.

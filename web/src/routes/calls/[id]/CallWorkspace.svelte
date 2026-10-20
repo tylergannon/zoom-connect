@@ -6,11 +6,11 @@
 	import SharingDialog from './SharingDialog.svelte';
 	import ScreenShare from './ScreenShare.svelte';
 	import ScheduledCallNotice from './ScheduledCallNotice.svelte';
-	import CallArtifacts from './CallArtifacts.svelte';
+	import CallPages from './CallPages.svelte';
 	import { api, APIError, errorMessage, duration, relativeDate, initials } from '#lib/api';
 	import type { Call, EventItem, Person } from '#lib/types';
 
-	let { callId: id }: { callId: string } = $props();
+	let { callId: id, artifactId = '' }: { callId: string; artifactId?: string } = $props();
 	let call = $state<Call | null>(null);
 	let events = $state<EventItem[]>([]);
 	let loading = $state(true);
@@ -141,6 +141,7 @@
 	{#if call.status==='scheduled'}<ScheduledCallNotice {call} oncancelled={() => void load()}/>{/if}
  <div class="call-stats"><div class="panel stat"><span>Duration</span><b>{showDuration(call.started, call.status==='live' ? undefined : call.ended)}</b></div><div class="panel stat"><span>Participants</span><b>{call.participants.length}</b></div><div class="panel stat"><span>Transcript lines</span><b>{events.filter(e=>e.kind==='transcript').length}</b></div><div class="panel stat"><span>Chat messages</span><b>{events.filter(e=>e.kind==='chat').length}</b></div></div>
 	{#key id}<ScreenShare callId={id} {events}/>{/key}
+	<CallPages {call} selectedId={artifactId} origin={pageOrigin}/>
 	<div class="call-layout">
 		<Card.Root class="transcript-panel">
 			<div class="transcript-toolbar"><div class="tabs-row"><button class:active={tab==='transcript'} onclick={() => tab='transcript'}>Transcript</button><button class:active={tab==='chat'} onclick={() => tab='chat'}>Chat <b>{events.filter(e=>e.kind==='chat').length}</b></button></div><div class="search-wrap"><Search size={15}/><input class="search-input" aria-label="Search transcript" placeholder="Search transcript" bind:value={query}/></div></div>
@@ -157,7 +158,6 @@
 		<aside class="detail-side">
 			<Card.Root class="panel-pad"><h2>In this call · {call.participants.length}</h2><div class="people-list">{#each call.participants as person}<div class="person-row"><span class="avatar">{initials(person.name)}</span><span><b>{person.name}</b><small>{person.email || 'Participant'}</small></span>{#if person.id===call.host.id}<span class="badge-muted">Host</span>{/if}</div>{/each}</div></Card.Root>
 			<Card.Root class="panel-pad"><h2>Agent access</h2><p class="muted small">Connect with an API key now. This URL waits before the call and delivers events as they arrive.</p><pre class="code">curl -N -H "Authorization: Bearer $ZC_KEY" {pageOrigin}/api/calls/{call.id}/stream</pre><a class="text-link" href="/keys">Manage keys →</a></Card.Root>
-			<CallArtifacts {call} origin={pageOrigin}/>
 		</aside>
 	</div>
 {/if}

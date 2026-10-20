@@ -568,6 +568,63 @@ func (q *Queries) LatestTranscript(ctx context.Context, callID string) (LatestTr
 	return i, err
 }
 
+const listArtifactVersions = `-- name: ListArtifactVersions :many
+SELECT v.version,v.title,octet_length(v.html)::bigint AS bytes,v.key_name,v.created_at,u.id AS author_id,u.name AS author_name
+FROM call_artifact_versions v JOIN call_artifacts a ON a.id=v.artifact_id JOIN users u ON u.id=v.author_id
+WHERE v.artifact_id=$1 AND a.call_id=$2 AND v.version<$3
+ORDER BY v.version DESC LIMIT $4
+`
+
+type ListArtifactVersionsParams struct {
+	ArtifactID string `json:"artifact_id"`
+	CallID     string `json:"call_id"`
+	Version    int64  `json:"version"`
+	Limit      int32  `json:"limit"`
+}
+
+type ListArtifactVersionsRow struct {
+	Version    int64              `json:"version"`
+	Title      string             `json:"title"`
+	Bytes      int64              `json:"bytes"`
+	KeyName    pgtype.Text        `json:"key_name"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	AuthorID   string             `json:"author_id"`
+	AuthorName string             `json:"author_name"`
+}
+
+func (q *Queries) ListArtifactVersions(ctx context.Context, arg ListArtifactVersionsParams) ([]ListArtifactVersionsRow, error) {
+	rows, err := q.db.Query(ctx, listArtifactVersions,
+		arg.ArtifactID,
+		arg.CallID,
+		arg.Version,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListArtifactVersionsRow
+	for rows.Next() {
+		var i ListArtifactVersionsRow
+		if err := rows.Scan(
+			&i.Version,
+			&i.Title,
+			&i.Bytes,
+			&i.KeyName,
+			&i.CreatedAt,
+			&i.AuthorID,
+			&i.AuthorName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCallArtifacts = `-- name: ListCallArtifacts :many
 SELECT a.id,a.call_id,a.version,a.created_at,cu.id AS created_by_id,cu.name AS created_by_name,
        v.title,octet_length(v.html)::bigint AS bytes,v.key_name,v.created_at AS updated_at,uu.id AS updated_by_id,uu.name AS updated_by_name
@@ -918,20 +975,6 @@ func (q *Queries) LockCallStatus(ctx context.Context, id string) (string, error)
 	var status string
 	err := row.Scan(&status)
 	return status, err
-}
-
-const pruneArtifactVersions = `-- name: PruneArtifactVersions :exec
-DELETE FROM call_artifact_versions WHERE artifact_id=$1 AND version<=$2
-`
-
-type PruneArtifactVersionsParams struct {
-	ArtifactID string `json:"artifact_id"`
-	Version    int64  `json:"version"`
-}
-
-func (q *Queries) PruneArtifactVersions(ctx context.Context, arg PruneArtifactVersionsParams) error {
-	_, err := q.db.Exec(ctx, pruneArtifactVersions, arg.ArtifactID, arg.Version)
-	return err
 }
 
 const reserveEventSeq = `-- name: ReserveEventSeq :one

@@ -281,18 +281,21 @@ func TestArtifactVersionConflictsBoundsAndReadOnlyAfterEnd(t *testing.T) {
 		t.Fatalf("version 1 snapshot: %d %s", code, b)
 	}
 
-	// Only the newest snapshots are retained; the current version always is.
-	for v := int64(3); v < 3+keptArtifactVersion; v++ {
+	// Every version stays in the call's history and the page keeps its id.
+	last := int64(33)
+	for v := int64(3); v < last; v++ {
 		if code, b := updateTestArtifact(t, s, dana, call.ID, art.ID, v, fmt.Sprintf("<p>%d</p>", v+1)); code != 200 {
 			t.Fatalf("update %d: %d %s", v, code, b)
 		}
 	}
-	last := int64(3 + keptArtifactVersion)
-	if code, _, _ := artifactDo(t, s, "GET", one+"/versions/3", dana, ""); code != 404 {
-		t.Fatalf("pruned version: %d", code)
+	for _, v := range []int64{1, 2, 3, last} {
+		if code, b, _ := artifactDo(t, s, "GET", fmt.Sprintf("%s/versions/%d", one, v), dana, ""); code != 200 {
+			t.Fatalf("version %d after %d updates: %d %s", v, last-1, code, b)
+		}
 	}
-	if code, _, _ := artifactDo(t, s, "GET", fmt.Sprintf("%s/versions/%d", one, last-keptArtifactVersion+1), dana, ""); code != 200 {
-		t.Fatalf("oldest retained version: %d", code)
+	var pages []Artifact
+	if code, b, _ := artifactDo(t, s, "GET", "/api/calls/"+call.ID+"/artifacts", dana, ""); code != 200 || json.Unmarshal(b, &pages) != nil || len(pages) != 1 || pages[0].ID != art.ID || pages[0].Version != last {
+		t.Fatalf("one page at version %d: %d %s", last, code, b)
 	}
 
 	for i := 1; i < maxArtifactsPerCall; i++ {
@@ -548,4 +551,105 @@ func TestArtifactStreamRechecksAccessBeforeWakeSnapshot(t *testing.T) {
 			}
 		})
 	})
+}
+
+type historyPage struct {
+	CurrentVersion int64                 `json:"current_version"`
+	Versions       []ArtifactVersionInfo `json:"versions"`
+	NextBefore     *int64                `json:"next_before"`
+}
+
+func artifactHistory(t *testing.T, s *httptest.Server, c cred, path string) historyPage {
+	t.Helper()
+	code, b, _ := artifactDo(t, s, "GET", path, c, "")
+	var out historyPage
+	if code != 200 || json.Unmarshal(b, &out) != nil || strings.Contains(string(b), `"html"`) {
+		t.Fatalf("history %s: %d %s", path, code, b)
+	}
+	return out
+}
+
+func historyVersions(p historyPage) []int64 {
+	out := make([]int64, 0, len(p.Versions))
+	for _, v := range p.Versions {
+		out = append(out, v.Version)
+	}
+	return out
+}
+
+// The history listing pages through every stored version newest first, with
+// the call ACL, and survives a server restart.
+func TestArtifactHistoryPagesAccessAndRestart(t *testing.T) {
+	dsn := testDatabase(t)
+	_, s := artifactTestServer(t, dsn)
+	dana := artifactLogin(t, s, "dana@acme.co")
+	call := eventTestCall(t, s, dana.cookie)
+	other := eventTestCall(t, s, dana.cookie)
+	art := createTestArtifact(t, s, dana, call.ID, "Board", "<p>1</p>")
+	key, _ := artifactKey(t, s, dana)
+	for v := int64(1); v < 60; v++ {
+		body, _ := json.Marshal(map[string]any{"base_version": v, "html": fmt.Sprintf("<p>%d</p>", v+1), "title": fmt.Sprintf("Board %d", v+1)})
+		if code, b, _ := artifactDo(t, s, "PUT", "/api/calls/"+call.ID+"/artifacts/"+art.ID, key, string(body)); code != 200 {
+			t.Fatalf("update %d: %d %s", v, code, b)
+		}
+	}
+	versions := "/api/calls/" + call.ID + "/artifacts/" + art.ID + "/versions"
+
+	first := artifactHistory(t, s, dana, versions)
+	got := historyVersions(first)
+	if first.CurrentVersion != 60 || len(got) != 50 || got[0] != 60 || got[49] != 11 || first.NextBefore == nil || *first.NextBefore != 11 {
+		t.Fatalf("first page: current %d, %d versions %v, next %v", first.CurrentVersion, len(got), got, first.NextBefore)
+	}
+	if v := first.Versions[0]; v.Title != "Board 60" || v.Via != "meeting-agent" || v.Author.ID != "u-dana" || v.Bytes != int64(len("<p>60</p>")) {
+		t.Fatalf("newest entry: %+v", v)
+	}
+	rest := artifactHistory(t, s, dana, fmt.Sprintf("%s?before=%d", versions, *first.NextBefore))
+	if got := historyVersions(rest); len(got) != 10 || got[0] != 10 || got[9] != 1 || rest.NextBefore != nil {
+		t.Fatalf("last page: %v next %v", got, rest.NextBefore)
+	}
+	if got := historyVersions(artifactHistory(t, s, dana, versions+"?before=4&limit=2")); fmt.Sprint(got) != "[3 2]" {
+		t.Fatalf("limited page: %v", got)
+	}
+	for _, q := range []string{"?limit=0", "?limit=101", "?before=0", "?before=x"} {
+		if code, b, _ := artifactDo(t, s, "GET", versions+q, dana, ""); code != 400 {
+			t.Fatalf("%s: %d %s", q, code, b)
+		}
+	}
+
+	// Same ACL as reads: anonymous 401, outsider 403, share recipient allowed,
+	// and the artifact id under another call or an unknown id is 404.
+	if code, _, _ := artifactDo(t, s, "GET", versions, cred{}, ""); code != 401 {
+		t.Fatalf("anonymous history: %d", code)
+	}
+	jordan := artifactLogin(t, s, "jordan@acme.co")
+	if code, _, _ := artifactDo(t, s, "GET", versions, jordan, ""); code != 403 {
+		t.Fatalf("outsider history: %d", code)
+	}
+	if code, b, _ := artifactDo(t, s, "POST", "/api/calls/"+call.ID+"/shares", dana, `{"email":"jordan@acme.co"}`); code != 201 {
+		t.Fatalf("share: %d %s", code, b)
+	}
+	if got := historyVersions(artifactHistory(t, s, jordan, versions+"?limit=1")); fmt.Sprint(got) != "[60]" {
+		t.Fatalf("shared history: %v", got)
+	}
+	for _, path := range []string{"/api/calls/" + other.ID + "/artifacts/" + art.ID + "/versions", "/api/v1/calls/" + call.ID + "/artifacts/nope/versions"} {
+		if code, _, _ := artifactDo(t, s, "GET", path, dana, ""); code != 404 {
+			t.Fatalf("%s: %d", path, code)
+		}
+	}
+
+	// A fresh server on the same database serves the latest version and the
+	// whole history.
+	_, s2 := artifactTestServer(t, dsn)
+	dana2 := artifactLogin(t, s2, "dana@acme.co")
+	code, b, _ := artifactDo(t, s2, "GET", "/api/calls/"+call.ID+"/artifacts/"+art.ID, dana2, "")
+	var latest ArtifactSnapshot
+	if code != 200 || json.Unmarshal(b, &latest) != nil || latest.ID != art.ID || latest.Version != 60 || latest.HTML != "<p>60</p>" {
+		t.Fatalf("latest after restart: %d %s", code, b)
+	}
+	if got := historyVersions(artifactHistory(t, s2, dana2, versions+"?limit=100")); len(got) != 60 || got[59] != 1 {
+		t.Fatalf("history after restart: %d versions", len(got))
+	}
+	if code, b, _ := artifactDo(t, s2, "GET", versions+"/1", dana2, ""); code != 200 || !strings.Contains(string(b), `"html":"\u003cp\u003e1\u003c/p\u003e"`) {
+		t.Fatalf("version 1 after restart: %d %s", code, b)
+	}
 }

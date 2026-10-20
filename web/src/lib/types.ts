@@ -26,3 +26,6 @@ export type Artifact = {
 	updated_via?: string; viewer_url: string;
 };
 export type ArtifactSnapshot = Artifact & { html: string };
+export type ArtifactVersionInfo = { version: number; title: string; bytes: number; created_at: string; author: Person; via?: string };
+export type ArtifactVersion = Omit<ArtifactVersionInfo, 'bytes'> & { artifact_id: string; call_id: string; html: string };
+export type ArtifactHistory = { artifact_id: string; call_id: string; current_version: number; versions: ArtifactVersionInfo[]; next_before: number | null };

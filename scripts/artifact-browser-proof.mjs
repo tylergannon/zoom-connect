@@ -2,7 +2,7 @@
 // zoom-connect instances on one private database, signs in with demo auth and
 // a fake agent key, and checks what a real browser renders and loads.
 //
-//   ZC_BIN=/tmp/zc-live-artifacts/zoom-connect \
+//   ZC_BIN=/tmp/zc-embedded/zoom-connect \
 //   DATABASE_URL='postgres://zoom:zoom@127.0.0.1:56996/zoom_connect_artifacts_demo?sslmode=disable' \
 //   node scripts/artifact-browser-proof.mjs [chromium|firefox|webkit]
 //
@@ -105,7 +105,7 @@ try {
 	}
 	check('viewer stayed on the same document', mainNavigations === navigationsAtStart && await page.evaluate(() => window.__sameDocument) === 'yes', `main-frame navigations after load: ${mainNavigations - navigationsAtStart}`);
 	check('version badge shows v3', (await page.getByTestId('artifact-version').textContent())?.trim() === 'Version 3');
-	await page.screenshot({ path: `/tmp/zc-live-artifacts/viewer-${engineName}.png` });
+	await page.screenshot({ path: `${process.env.ZC_SHOTS || '/tmp/zc-embedded'}/viewer-${engineName}.png` });
 
 	const stale = await agent(originA, 'PUT', `${artifacts}/${art.id}`, { base_version: 1, html: '<h1 id="headline">stale</h1>' });
 	check('stale base_version gets 409 with current_version', stale.status === 409 && stale.body?.current_version === 3, JSON.stringify(stale.body));
@@ -153,8 +153,9 @@ try {
 	await outsider.request.post(`${originA}/api/demo/login`, { data: { email: 'jordan@acme.co' } });
 	const outsiderPage = await outsider.newPage();
 	await outsiderPage.goto(originA + art.viewer_url);
-	await outsiderPage.getByText('You can’t view this artifact').waitFor({ timeout: 10000 });
-	check('outsider sees the no-access state and no frame', await outsiderPage.locator('.artifact-frame iframe').count() === 0);
+	// Pages live in the call view, so the call's own no-access state applies.
+	await outsiderPage.getByText('You weren’t in this call').waitFor({ timeout: 10000 });
+	check('outsider sees the no-access state, no page list and no frame', await outsiderPage.locator('.artifact-frame iframe').count() === 0 && await outsiderPage.locator('.page-row').count() === 0);
 	const outsiderRead = await outsider.request.get(`${originA}${artifacts}/${art.id}`);
 	check('outsider API read is rejected', outsiderRead.status() === 403, `status ${outsiderRead.status()}`);
 	await outsider.close();
@@ -190,14 +191,22 @@ try { alert('alert ${tag}'); } catch (e) {}
 	await hostilePage.goto(originA + hostile.body.viewer_url);
 	const hostileFrame = hostilePage.frameLocator('.artifact-frame iframe');
 	await hostileFrame.locator('#headline').waitFor({ timeout: 10000 });
+	const titleBefore = await hostilePage.title();
 	for (const id of ['#toplink', '#blanklink', '#submit']) await hostileFrame.locator(id).click({ timeout: 3000, noWaitAfter: true }).catch(() => {});
 	await sleep(3000);
 	const viewerHits = hits.filter((h) => h.startsWith('/viewer/'));
 	check('sandboxed viewer made no beacon requests', viewerHits.length === 0, viewerHits.join(', ') || 'none');
 	check('script did not run in the artifact', await hostileFrame.locator('body').getAttribute('data-ran') === null);
-	check('viewer page title and URL unchanged', (await hostilePage.title()) === 'Hostile · Zoom Connect' && hostilePage.url() === originA + hostile.body.viewer_url, `${await hostilePage.title()} at ${hostilePage.url()}`);
+	// The call view's title is the call topic; the page's <title> never reaches it.
+	check('viewer page title and URL unchanged', titleBefore === 'Artifact browser proof · Zoom Connect' && (await hostilePage.title()) === titleBefore && hostilePage.url() === originA + hostile.body.viewer_url, `${await hostilePage.title()} at ${hostilePage.url()}`);
 	check('no dialogs or popups', dialogs.length === 0 && popups.length === 0, JSON.stringify({ dialogs, popups }));
 	check('artifact could not create API keys', await keyIds() === keysBefore);
+
+	// Each call view holds a few event streams; close the finished ones so the
+	// browser's per-host connection limit is not reached.
+	// The policy-only control below reuses the hostile viewer's exact document.
+	const hostileSrcdoc = await hostilePage.locator('.artifact-frame iframe').getAttribute('srcdoc');
+	await Promise.all([page.close(), proxied.close(), hostilePage.close()]);
 
 	// Positive controls in a page on the app origin prove the payload is live.
 	const control = await context.newPage();
@@ -222,7 +231,7 @@ try { alert('alert ${tag}'); } catch (e) {}
 	// The viewer's exact rendered document without the sandbox attribute. The
 	// policy still stops scripts and loads, but the frame shares the app origin
 	// and can refresh itself, open popups and navigate the app page.
-	const viewerDocument = (await hostilePage.locator('.artifact-frame iframe').getAttribute('srcdoc')).replaceAll('/viewer/', '/control-policy-only/').replaceAll('stolen-viewer', 'stolen-control-policy-only');
+	const viewerDocument = hostileSrcdoc.replaceAll('/viewer/', '/control-policy-only/').replaceAll('stolen-viewer', 'stolen-control-policy-only');
 	const policyOnly = watch(await context.newPage());
 	await policyOnly.goto(`${originA}/keys`);
 	await policyOnly.evaluate((docs) => docs.forEach((html, i) => { const frame = document.createElement('iframe'); frame.id = `policy-only-${i}`; frame.srcdoc = html; document.body.append(frame); }), [viewerDocument, viewerDocument.replace(/<meta http-equiv="refresh"[^>]*>/, '')]);
