@@ -1,0 +1,16 @@
+{
+  "sourceRevision": "2c605c91c64e462b0b81c2e31fa8c1a69859d431",
+  "origin": "https://zoom-connect-tpg-demo.fly.dev",
+  "flyRelease": 5,
+  "machineID": "8d99909f12d0d8",
+  "image": "registry.fly.io/zoom-connect-tpg-demo:deployment-01M5BDJ8X9AN0ZJBMTW5S9VD5J",
+  "digest": "sha256:4cdb5a18b658390e73b5a6842ddffd4421001d348a49a481ee751b78e25bd2a8",
+  "appSHA256": "4e2e340e70d4e1c4f38778b27488971e1699f09be4980ee6f909a51a94408f20",
+  "recorderSHA256": "f8ec543f801ba81e8b5cb03da65671ce62bbfeecb9877d68e8a276fc54a77867",
+  "replacementCredentialColdStart": "DOPPLER_COLD_START_OK; exit 0 on temporary Fly machine 84969dc2e54068",
+  "review": {
+    "model": "claude-opus-5-5",
+    "runID": "01M5BCY6QREQ2GE5A8FEP2P8SY.run-prompt",
+    "report": "ephemeral/reviews/20261019-scheduled-calls-round-04.md"
+  }
+}

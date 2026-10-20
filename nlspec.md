@@ -56,8 +56,10 @@ because no transcript text arrives.
 Scheduled attachment is best effort for upstream capture: on an HTTP client
 error the recorder captures a standalone call using the existing ingestion
 path. Server/network attachment failures retry with backoff for thirty seconds
-before that fallback. Each stream serializes its own opening data behind
-attachment so retries do not drop opening text or block other calls. Ambiguous
+before that fallback. Each stream serializes attachment independently. Signaling starts after
+attachment retries finish; opening content during app unavailability depends on
+Zoom buffering and is not guaranteed. Automatic recorder socket recovery
+without a new Zoom start remains future work. Ambiguous
 attachments are retired before fallback; fallback is logged with the call URL. Do not report standalone fallback as delivery to a pending call.
 Fallback still uses the existing authenticated admin ingestion endpoint.
 

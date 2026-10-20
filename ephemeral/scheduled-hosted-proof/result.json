@@ -1,0 +1,14 @@
+{
+  "origin": "https://zoom-connect-tpg-demo.fly.dev",
+  "at": "2026-10-20T01:07:57.924Z",
+  "callID": "01M5BDKF691P4HN0XW14DYW5VT",
+  "health": {
+    "status": "ok"
+  },
+  "clientConnectedBeforeStart": true,
+  "keepalive": true,
+  "cancellationEndedClientStream": true,
+  "simulatedZoomInput": false,
+  "realZoomOpeningCaptureTested": false,
+  "browserErrors": []
+}

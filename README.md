@@ -138,7 +138,9 @@ stream IDs to the registered call; duplicate notifications and recorder restarts
 do not create a second call. Concurrent streams remain separate, and the call
 ends when its last stream stops. Temporary interruptions emit `stream.paused`
 and keep clients connected for up to two minutes. A resumed start can reuse an
-interrupted stream ID; final stopped IDs stay closed. A fresh stream for that same runtime UUID
+interrupted stream ID; final stopped IDs stay closed. The recorder currently
+requires a new Zoom start notification to resume; it does not automatically
+reconnect a dropped signaling socket. A fresh stream for that same runtime UUID
 can reopen the call at the same URL; a new meeting UUID instead starts a new
 session and interrupts any stale live predecessor. Delayed streams from a
 superseded UUID cannot interrupt the current session. A missing meeting
