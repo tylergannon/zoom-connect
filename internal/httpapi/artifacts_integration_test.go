@@ -20,13 +20,17 @@ import (
 
 // artifactTestServer is the real handler stack with a short access/version tick.
 func artifactTestServer(t *testing.T, dsn string) (*Server, *httptest.Server) {
+	return artifactTestServerTick(t, dsn, 100*time.Millisecond)
+}
+
+func artifactTestServerTick(t *testing.T, dsn string, tick time.Duration) (*Server, *httptest.Server) {
 	t.Helper()
 	s, err := store.Open(context.Background(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	a := &Server{s: s, h: newHub(s), artifactTick: 100 * time.Millisecond}
+	a := &Server{s: s, h: newHub(s), artifactTick: tick}
 	if err = a.seed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -492,4 +496,56 @@ func TestArtifactStreamLatestReconnectRevocationAndRestart(t *testing.T) {
 	artifactDo(t, s, "POST", "/api/demo/calls/"+call.ID+"/stop", dana, "")
 	waitClosed(t, events, "end")
 	_ = a
+}
+
+// An update that wakes a stream must not reach a key or share revoked since
+// the last periodic check. The tick is an hour, so within this test only the
+// check made at wake-up can close these streams.
+func TestArtifactStreamRechecksAccessBeforeWakeSnapshot(t *testing.T) {
+	_, s := artifactTestServerTick(t, testDatabase(t), time.Hour)
+	dana := artifactLogin(t, s, "dana@acme.co")
+	call := eventTestCall(t, s, dana.cookie)
+	// revokeThenUpdate opens a stream as viewer, revokes its access, then
+	// publishes a version, which wakes the stream.
+	revokeThenUpdate := func(t *testing.T, viewer cred, revoke func()) {
+		art := createTestArtifact(t, s, dana, call.ID, "Live board", "<p>v1</p>")
+		events, cancel := openArtifactStream(t, s, "/api/calls/"+call.ID+"/artifacts/"+art.ID+"/stream", viewer, "")
+		defer cancel()
+		if snap := nextSnapshot(t, events); snap.Version != 1 {
+			t.Fatalf("initial snapshot: %+v", snap)
+		}
+		revoke()
+		if code, b := updateTestArtifact(t, s, dana, call.ID, art.ID, 1, "<p>v2 after revocation</p>"); code != 200 {
+			t.Fatalf("update: %d %s", code, b)
+		}
+		waitClosed(t, events, "")
+	}
+
+	t.Run("revoked key", func(t *testing.T) {
+		key, keyID := artifactKey(t, s, dana)
+		revokeThenUpdate(t, key, func() {
+			if code, _, _ := artifactDo(t, s, "DELETE", "/api/keys/"+keyID, dana, ""); code != 204 {
+				t.Fatalf("revoke key: %d", code)
+			}
+		})
+	})
+	t.Run("removed share", func(t *testing.T) {
+		if code, b, _ := artifactDo(t, s, "POST", "/api/calls/"+call.ID+"/shares", dana, `{"email":"jordan@acme.co"}`); code != 201 {
+			t.Fatalf("share: %d %s", code, b)
+		}
+		revokeThenUpdate(t, artifactLogin(t, s, "jordan@acme.co"), func() {
+			code, b, _ := artifactDo(t, s, "GET", "/api/calls/"+call.ID+"/shares", dana, "")
+			var shares struct {
+				Shares []struct {
+					ID string `json:"id"`
+				} `json:"shares"`
+			}
+			if code != 200 || json.Unmarshal(b, &shares) != nil || len(shares.Shares) != 1 {
+				t.Fatalf("shares: %d %s", code, b)
+			}
+			if code, _, _ := artifactDo(t, s, "DELETE", "/api/calls/"+call.ID+"/shares/"+shares.Shares[0].ID, dana, ""); code != 204 {
+				t.Fatalf("unshare: %d", code)
+			}
+		})
+	})
 }

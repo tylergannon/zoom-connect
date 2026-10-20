@@ -19,8 +19,10 @@ relates to `nlspec.md` are in
   `…/stream`, an SSE stream of whole snapshots whose event id is the version.
   The browser resumes with `Last-Event-ID`. A reconnect therefore gets the
   newest version even if it missed several. Writes wake viewers on the same
-  instance at once. Every stream also rechecks access and the stored version
-  every 3 seconds, which covers other instances and revoked access.
+  instance at once. A stream rechecks access before every snapshot after the
+  first, so a revoked key or share never receives a newer version. It also
+  rechecks access and the stored version every 3 seconds, which covers other
+  instances and closes idle streams whose access was revoked.
 - **Isolation:** agent HTML is untrusted. It is only ever returned as a JSON
   string and is shown in `<iframe sandbox="" srcdoc>`, which gives it an opaque
   origin with no scripts, forms, popups or navigation of the app. A CSP meta
@@ -120,6 +122,11 @@ call the real HTTP handlers against real Postgres, with `-race`:
   - A second server instance on the same database delivers a write made
     through the first (by polling).
   - Stopping the call sends `event: end`.
+- `TestArtifactStreamRechecksAccessBeforeWakeSnapshot`
+  - The access tick is an hour, so only the check at wake-up can act. A key
+    is revoked, or a share removed, after its stream got v1, and then v2 is
+    written. The stream closes without sending v2.
+  - Before the fix, both subtests received v2 and failed.
 
 **Headless browser proof** (`scripts/artifact-browser-proof.mjs`) uses
 Playwright against the built binary. It runs two instances on one database,
@@ -219,8 +226,9 @@ at a scratch database.
   position resets on every update. There is no diff or patch format.
 - **Delivery timing.** Wake-ups are in-process. Other instances, and a viewer
   whose wake-up was missed, rely on the 3-second poll. Delivery across instances
-  was proven against one shared database, not on Fly. Revoked access closes a
-  stream within about 3 seconds; the viewer then rechecks and clears the page.
+  was proven against one shared database, not on Fly. A stream whose access was
+  revoked closes at its next update, or within about 3 seconds if idle; the
+  viewer then rechecks and clears the page.
 - **Missing operations.** There is no delete or rename-only endpoint (every
   update must include `html`) and no per-key rate limit. The size and count
   bounds cap storage at about 10 × 25 × 256 KiB per call. Writes are refused

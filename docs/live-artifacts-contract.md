@@ -74,9 +74,12 @@ that it sends each newer version, comment keepalives, and finally
 `event: end` / `data: {}` when the call is no longer scheduled or live.
 Intermediate versions may be skipped: the stream carries the latest state, not
 a log. Access (key or session still valid, and still a participant or share
-recipient) and the stored version are rechecked every 3 seconds. A server that
-missed an in-process wake-up, or runs as a separate instance, still delivers
-within that interval.
+recipient) is rechecked before every snapshot after the first: once access is
+gone, the stream closes instead of sending a newer version. An idle stream
+also rechecks access every 3 seconds, so it closes within about 3 seconds of
+revocation even if nothing changes. The stored version is rechecked on that
+same 3-second tick: a server that missed an in-process wake-up, or runs as a
+separate instance, still delivers within that interval.
 
 **Rendering rule.** The HTML is untrusted. The API only returns it as a JSON
 string, with `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.

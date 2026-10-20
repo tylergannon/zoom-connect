@@ -437,16 +437,21 @@ func (a *Server) artifactStream(w http.ResponseWriter, r *http.Request) {
 	tick := time.NewTicker(a.artifactTickInterval())
 	defer tick.Stop()
 	p := principal(r)
+	// Access is checked before every later snapshot, and on each tick so an
+	// idle stream also closes once its key, session or share is gone.
+	allowed := func() bool {
+		return a.stillValid(r.Context(), r, p) && a.canAccess(r.Context(), c.ID, p.User.ID)
+	}
 	for {
 		select {
 		case <-r.Context().Done():
 			return
 		case <-wake:
-			if !send(a.artifacts.newest(id)) {
+			if !allowed() || !send(a.artifacts.newest(id)) {
 				return
 			}
 		case <-tick.C:
-			if !a.stillValid(r.Context(), r, p) || !a.canAccess(r.Context(), c.ID, p.User.ID) {
+			if !allowed() {
 				return
 			}
 			if v, err := a.s.Q.CallArtifactVersion(r.Context(), db.CallArtifactVersionParams{ID: id, CallID: c.ID}); err == nil && v > sent {
