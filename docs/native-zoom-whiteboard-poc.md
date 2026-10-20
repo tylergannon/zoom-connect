@@ -76,7 +76,10 @@ Native mode needs all of these (names are in `.env.example`):
 `ZOOM_WHITEBOARD_SCOPES` containing all three required scopes.
 `ZOOM_WHITEBOARD_API_URL` may point to HTTPS, or to HTTP on loopback for a
 fake. The token is only placed in the outbound `Authorization` header. It is
-never stored, logged or returned, and redirects are not followed. Scopes are
+never stored, logged or returned, and redirects are not followed. If a Zoom
+error message echoes the exact token, it is replaced with `[redacted]` before
+the error is returned or stored. `Retry-After` is kept only as seconds or an
+HTTP date. Encoded or partial copies of the token are not detected. Scopes are
 operator-declared, and Zoom's `401`/`403` remains authoritative.
 
 ### Exact example (captured from the local runtime check)
@@ -145,9 +148,10 @@ Publish with native publishing off returned `503`:
 ## Verification results
 
 All checks ran locally on 2026-10-20 with Go 1.27.2, `GOMAXPROCS=2`, and a
-private throwaway Postgres 17 container (`127.0.0.1:57660`, tmpfs).
+private throwaway Postgres 17 container (loopback only, tmpfs; recreated for
+the follow-up fixes).
 
-- `go vet ./...` is clean. `go test -p 1 -count=1 -v ./...` with `TEST_DATABASE_URL=…/zoom_connect_whiteboard_test` exits **0**: 39 PASS, 0 SKIP, 0 FAIL (`cmd/rtmsrec`, `internal/httpapi`). New tests:
+- `go vet ./...` is clean. `go test -p 1 -count=1 -v ./...` with `TEST_DATABASE_URL=…/zoom_connect_whiteboard_test` exits **0**: 40 PASS counting subtests (30 top-level), 0 SKIP, 0 FAIL (`cmd/rtmsrec`, `internal/httpapi`), rerun after the follow-up fixes. New tests:
   - **`TestWhiteboardDraftAccessAndPreview`** (real handlers and Postgres) covers:
     - anonymous `401`;
     - an API-key agent draft on `/api/v1` that records the agent name;
@@ -174,6 +178,7 @@ private throwaway Postgres 17 container (`127.0.0.1:57660`, tmpfs).
   - **`TestWhiteboardPublishFailures`** checks two failure modes:
     - create `401`/`124` → `502` at stage `create`, with no board and no event;
     - content `403`/`111804` → `502` at stage `content`, with `whiteboard_id`, a `board.publish_failed` event, and no success event.
+  - **`TestWhiteboardPublishErrorsRedactToken`**: the fake echoes `Bearer <fake token>` in a content `403` message and its `Retry-After`, and in a create `429` message. Before the fix this test failed with the token in `zoom.message` and `zoom.retry_after`. Now the token appears in neither the response nor any stored call event, while stage, status, code, the rest of the message and a valid `Retry-After: 30` are kept.
   - **`TestLayoutBoardCoordinates`**, **`TestConfigureWhiteboard`** cover:
     - exact coordinates;
     - native-object keys;
@@ -185,6 +190,11 @@ private throwaway Postgres 17 container (`127.0.0.1:57660`, tmpfs).
 - Runtime: the built binary ran on `127.0.0.1:57661` against a separate private database:
   - with curl: demo login `200`, API-key draft `201` (event 2, `agent=runtime-board-agent`), status `200 mode=preview can_publish=false`, publish `503` with the missing list, anonymous `401`;
   - headless Chromium (Playwright, from `web/node_modules`) signed in as the host and opened the call page. It confirmed the panel heading, the *Local preview only* badge, the agent name, 3 SVG cards, the lanes `Decided|Open questions|Parking lot`, card text with its event citation, the missing-grants note and the request JSON, and that no publish button appears in preview mode.
+- Publish-error runtime check (follow-up fix):
+  - Setup: the app ran with native mode enabled, using a fake token and declared scopes. It pointed at a loopback fake Zoom that answers board creation with `401`/`124`.
+  - Steps: headless Chromium signed in as the host and clicked **Publish to Zoom Whiteboard**. The publish returned `502` and the following status refresh returned `200`.
+  - Before the fix, the panel then showed no error, because the refresh cleared it. After the fix, *Zoom Whiteboard request failed* stays visible.
+  - Each run made one request, and only to the fake.
 
 ## Limitations
 
