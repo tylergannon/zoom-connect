@@ -13,6 +13,7 @@
 	const streamCmd = $derived(`curl -N -H "Authorization: Bearer $ZC_KEY" ${origin}/api/stream`);
 	const callCmd = $derived(`curl -N -H "Authorization: Bearer $ZC_KEY" ${origin}/api/calls/CALL_ID/stream`);
 	const downloadCmd = $derived(`curl -H "Authorization: Bearer $ZC_KEY" "${origin}/api/calls/CALL_ID/transcript?format=json"`);
+	const boardCmd = $derived(`curl -H "Authorization: Bearer $ZC_KEY" -H "Content-Type: application/json" ${origin}/api/v1/calls/CALL_ID/whiteboard -d '{"concept":"decision_board","title":"Launch decisions","cards":[{"lane":"Decided","text":"Ship the beta Friday","source_seq":42}]}'`);
 </script>
 
 <svelte:head><title>Agent API · Zoom Connect</title></svelte:head>
@@ -26,8 +27,12 @@
 		<div class="endpoint-list"><div><Badge.Badge variant="outline">POST</Badge.Badge><code>/api/calls</code><span>Admin: add a scheduled call from a Zoom invitation; returns a streamable call ID</span></div><div><Badge.Badge variant="outline">GET</Badge.Badge><code>/api/calls</code><span>Accessible calls, newest first</span></div><div><Badge.Badge variant="outline">GET</Badge.Badge><code>/api/calls/{'{id}'}</code><span>Call metadata</span></div><div><Badge.Badge variant="outline">GET</Badge.Badge><code>/api/calls/{'{id}'}/events</code><span>Structured event list</span></div><div><Badge.Badge variant="outline">GET</Badge.Badge><code>/api/calls/{'{id}'}/transcript?format=txt|vtt|json</code><span>Transcript download</span></div><div><Badge.Badge variant="outline">GET</Badge.Badge><code>/api/calls/{'{id}'}/stream</code><span>Call events over SSE</span></div></div>
 		{@render CodeBlock('download', downloadCmd, copied==='download', () => copy('download',downloadCmd))}
 	</section>
+	<section id="whiteboard"><h2>4. Draft a whiteboard (prototype)</h2><p>Post a <code>decision_board</code>, <code>action_swimlanes</code> or <code>evolving_diagram</code> draft while the call is scheduled or live. Hosts and participants may draft; anyone who can see the call can read status. The draft is saved as a <code>board.draft</code> event and previewed on the call page. Only the host can publish it to Zoom Whiteboard, and only when native publishing is configured. Zoom receives positioned rectangles only, not card text. Publishing does not open the board in the meeting.</p>
+		<div class="endpoint-list"><div><Badge.Badge variant="outline">GET</Badge.Badge><code>/api/v1/calls/{'{id}'}/whiteboard</code><span>Mode, missing grants, latest draft and the exact Zoom requests</span></div><div><Badge.Badge variant="outline">POST</Badge.Badge><code>/api/v1/calls/{'{id}'}/whiteboard</code><span>Save a draft: concept, title, cards (lane, text, source_seq), links</span></div><div><Badge.Badge variant="outline">POST</Badge.Badge><code>/api/v1/calls/{'{id}'}/whiteboard/publish</code><span>Host only: publish <code>{'{"draft_seq":N}'}</code> to Zoom Whiteboard</span></div></div>
+		{@render CodeBlock('board', boardCmd, copied==='board', () => copy('board',boardCmd))}
+	</section>
 	<section><h2>Errors</h2><p><code>401</code> missing or revoked key · <code>403</code> the key owner cannot see the call · <code>404</code> no such call.</p></section>
-</article><aside class="guide-toc"><b>On this page</b><a href="#all-calls">Hear about every call</a><a href="#follow-call">Follow one call</a><a href="#download">Download a call</a><a href="/keys">Create an API key <ExternalLink size={13}/></a></aside></div>
+</article><aside class="guide-toc"><b>On this page</b><a href="#all-calls">Hear about every call</a><a href="#follow-call">Follow one call</a><a href="#download">Download a call</a><a href="#whiteboard">Draft a whiteboard</a><a href="/keys">Create an API key <ExternalLink size={13}/></a></aside></div>
 
 {#snippet CodeBlock(id: string, code: string, copied: boolean, oncopy: () => void)}
 	<div class="code-wrap"><pre class="code">{code}</pre><Button.Root class="copy-code" variant="outline" size="sm" onclick={oncopy}>{#if copied}<Check size={14}/> Copied{:else}<Copy size={14}/> Copy{/if}</Button.Root></div>

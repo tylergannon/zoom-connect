@@ -5,6 +5,7 @@
 	import * as Badge from '#lib/components/ui/badge';
 	import SharingDialog from './SharingDialog.svelte';
 	import ScreenShare from './ScreenShare.svelte';
+	import WhiteboardPanel from './WhiteboardPanel.svelte';
 	import ScheduledCallNotice from './ScheduledCallNotice.svelte';
 	import { api, APIError, errorMessage, duration, relativeDate, initials } from '#lib/api';
 	import type { Call, EventItem, Person } from '#lib/types';
@@ -92,7 +93,7 @@
 				if (item.kind === 'stream.stopped' || item.kind === 'stream.interrupted') void finish(item.kind === 'stream.stopped' ? 'stopped' : 'interrupted');
 			} catch { /* ignore malformed keepalive */ }
 		};
-		for (const kind of ['call.scheduled','call.cancelled','transcript','chat','participant.joined','participant.left','stream.started','stream.paused','stream.stopped','stream.interrupted','speaker.active','screen.frame']) source.addEventListener(kind, accept);
+		for (const kind of ['call.scheduled','call.cancelled','transcript','chat','participant.joined','participant.left','stream.started','stream.paused','stream.stopped','stream.interrupted','speaker.active','screen.frame','board.draft','board.published','board.publish_failed','board.in_meeting']) source.addEventListener(kind, accept);
 		source.addEventListener('end', () => { void finish(); });
 		source.onmessage = accept;
 	}
@@ -139,7 +140,7 @@
 	</div>
 	{#if call.status==='scheduled'}<ScheduledCallNotice {call} oncancelled={() => void load()}/>{/if}
  <div class="call-stats"><div class="panel stat"><span>Duration</span><b>{showDuration(call.started, call.status==='live' ? undefined : call.ended)}</b></div><div class="panel stat"><span>Participants</span><b>{call.participants.length}</b></div><div class="panel stat"><span>Transcript lines</span><b>{events.filter(e=>e.kind==='transcript').length}</b></div><div class="panel stat"><span>Chat messages</span><b>{events.filter(e=>e.kind==='chat').length}</b></div></div>
-	{#key id}<ScreenShare callId={id} {events}/>{/key}
+	{#key id}<ScreenShare callId={id} {events}/><WhiteboardPanel callId={id} {events}/>{/key}
 	<div class="call-layout">
 		<Card.Root class="transcript-panel">
 			<div class="transcript-toolbar"><div class="tabs-row"><button class:active={tab==='transcript'} onclick={() => tab='transcript'}>Transcript</button><button class:active={tab==='chat'} onclick={() => tab='chat'}>Chat <b>{events.filter(e=>e.kind==='chat').length}</b></button></div><div class="search-wrap"><Search size={15}/><input class="search-input" aria-label="Search transcript" placeholder="Search transcript" bind:value={query}/></div></div>
