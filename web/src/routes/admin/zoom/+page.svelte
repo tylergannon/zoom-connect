@@ -1,85 +1,398 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { RefreshCw, ExternalLink, Radio, Check, Play, Square } from '@lucide/svelte';
-	import * as Button from '#lib/components/ui/button';
-	import * as Card from '#lib/components/ui/card';
-	import * as Badge from '#lib/components/ui/badge';
-	import * as Switch from '#lib/components/ui/switch';
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import FlaskConical from '@lucide/svelte/icons/flask-conical';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import Play from '@lucide/svelte/icons/play';
+	import Square from '@lucide/svelte/icons/square';
+	import ShieldAlert from '@lucide/svelte/icons/shield-alert';
+	import { toast } from 'svelte-sonner';
 	import * as Alert from '#lib/components/ui/alert';
-	import { api, APIError, errorMessage, relativeDate } from '#lib/api';
-	import type { ZoomSettings, Call } from '#lib/types';
-	let settings = $state<ZoomSettings | null>(null); let loading = $state(true); let saving = $state(false); let error = $state(''); let notice = $state('');
-	let clientId = $state(''); let clientSecret = $state(''); let transcript = $state(true); let chat = $state(true); let demoCall = $state<Call | null>(null);
-	onMount(() => { void load(); });
+	import * as Card from '#lib/components/ui/card';
+	import * as Empty from '#lib/components/ui/empty';
+	import * as Field from '#lib/components/ui/field';
+	import * as Table from '#lib/components/ui/table';
+	import { Badge } from '#lib/components/ui/badge';
+	import { Button } from '#lib/components/ui/button';
+	import { Input } from '#lib/components/ui/input';
+	import { Skeleton } from '#lib/components/ui/skeleton';
+	import { Spinner } from '#lib/components/ui/spinner';
+	import { Switch } from '#lib/components/ui/switch';
+	import CallStatus from '#lib/components/CallStatus.svelte';
+	import CopyButton from '#lib/components/CopyButton.svelte';
+	import { ago, api, APIError, errorMessage } from '#lib/api';
+	import { callIndex } from '#lib/calls.svelte';
+	import type { Call, ZoomSettings } from '#lib/types';
+
+	let settings = $state<ZoomSettings | null>(null);
+	let view = $state<'loading' | 'ready' | 'forbidden' | 'error'>('loading');
+	let loadError = $state('');
+	let checking = $state(false);
+	let checked = $state('');
+
+	let clientId = $state('');
+	let clientSecret = $state('');
+	let transcript = $state(true);
+	let chat = $state(true);
+	let saving = $state(false);
+	let saveError = $state('');
+	let saved = $state('');
+
+	let demoCall = $state<Call | null>(null);
+	let demoBusy = $state(false);
+	let demoError = $state('');
+
+	const demo = $derived(settings?.mode === 'demo');
+
+	onMount(() => {
+		void load();
+	});
+
+	function apply(next: ZoomSettings) {
+		settings = next;
+		clientId = next.credentials.client_id || '';
+		transcript = next.capture.transcript;
+		chat = next.capture.chat;
+	}
+
 	async function load() {
-		loading=true; error='';
-		try { settings=await api<ZoomSettings>('/api/admin/zoom'); clientId=settings.credentials.client_id||''; transcript=settings.capture.transcript; chat=settings.capture.chat; }
-		catch(e) { if(e instanceof APIError && e.status===404){error='This page is only available to Zoom Connect admins.';} else error=errorMessage(e); }
-		finally { loading=false; }
+		try {
+			apply(await api<ZoomSettings>('/api/admin/zoom'));
+			view = 'ready';
+		} catch (e) {
+			if (e instanceof APIError && (e.status === 404 || e.status === 403)) view = 'forbidden';
+			else {
+				loadError = errorMessage(e);
+				view = 'error';
+			}
+		}
 	}
-	async function save() {
-		saving=true; error=''; notice='';
-		try { settings=await api<ZoomSettings>('/api/admin/zoom',{method:'POST',body:JSON.stringify({client_id:clientId,client_secret:clientSecret||undefined,capture:{transcript,chat}})}); clientSecret=''; notice='Settings saved'; }
-		catch(e) { error=errorMessage(e); }
-		finally { saving=false; }
+
+	async function checkAgain() {
+		checking = true;
+		checked = '';
+		await load();
+		checking = false;
+		checked = 'Status updated.';
 	}
+
+	async function save(event: SubmitEvent) {
+		event.preventDefault();
+		saving = true;
+		saveError = '';
+		saved = '';
+		try {
+			apply(
+				await api<ZoomSettings>('/api/admin/zoom', {
+					method: 'POST',
+					body: JSON.stringify({ client_id: clientId.trim(), client_secret: clientSecret || undefined, capture: { transcript, chat } })
+				})
+			);
+			clientSecret = '';
+			saved = 'Saved';
+		} catch (e) {
+			saveError = errorMessage(e);
+		} finally {
+			saving = false;
+		}
+	}
+
 	async function startDemo() {
-		error='';
-		try { demoCall=await api<Call>('/api/demo/calls',{method:'POST',body:JSON.stringify({})}); }
-		catch(e){error=errorMessage(e);}
+		demoBusy = true;
+		demoError = '';
+		try {
+			demoCall = await api<Call>('/api/demo/calls', { method: 'POST', body: '{}' });
+			toast.success('Simulated call started', { description: demoCall.topic });
+			void callIndex.refresh();
+		} catch (e) {
+			demoError = errorMessage(e);
+		} finally {
+			demoBusy = false;
+		}
 	}
+
 	async function stopDemo() {
-		if(!demoCall)return;
-		try { demoCall=await api<Call>(`/api/demo/calls/${encodeURIComponent(demoCall.id)}/stop`,{method:'POST'}); notice='Simulated call stopped'; }
-		catch(e){error=errorMessage(e);}
+		if (!demoCall) return;
+		demoBusy = true;
+		demoError = '';
+		try {
+			demoCall = await api<Call>(`/api/demo/calls/${encodeURIComponent(demoCall.id)}/stop`, { method: 'POST', body: '{}' });
+			toast.success('Simulated call stopped');
+			void callIndex.refresh();
+		} catch (e) {
+			demoError = errorMessage(e);
+		} finally {
+			demoBusy = false;
+		}
 	}
-	const webhookTime = (value?:string) => value ? relativeDate(value) : 'No webhook received';
+
+	const messages: Record<string, string> = {
+		'meeting.rtms_started': 'Recording started',
+		'meeting.rtms_stopped': 'Recording stopped',
+		'meeting.rtms_interrupted': 'Recording interrupted',
+		'endpoint.url_validation': 'Zoom checked the webhook URL'
+	};
+
+	function result(outcome: string): { text: string; variant: 'secondary' | 'outline' | 'destructive' } {
+		if (outcome.startsWith('accepted')) return { text: 'Accepted', variant: 'secondary' };
+		if (outcome === 'validation answered') return { text: 'Answered', variant: 'secondary' };
+		if (outcome === 'rejected') return { text: 'Rejected', variant: 'destructive' };
+		if (outcome === 'bad signature') return { text: 'Bad signature', variant: 'destructive' };
+		if (outcome === 'ignored') return { text: 'Ignored', variant: 'outline' };
+		return { text: outcome[0]?.toUpperCase() + outcome.slice(1), variant: 'outline' };
+	}
 </script>
 
 <svelte:head><title>Zoom connection · Zoom Connect</title></svelte:head>
-<div class="page-head"><div><h1>Zoom connection</h1><p>Configure Zoom RTMS credentials and review webhook activity.</p></div><Button.Root variant="outline" onclick={load} disabled={loading}><RefreshCw size={15}/> Re-check</Button.Root></div>
-{#if loading}<div class="panel empty-state"><span class="spinner"></span><p>Loading Zoom settings…</p></div>
-{:else if error && !settings}<div class="panel empty-state"><h2>Zoom settings unavailable</h2><p>{error}</p><a class="sign-in-link" href="/calls">Back to calls</a></div>
-{:else if settings}
-	<div class="demo-banner"><Badge.Badge variant="outline">Local demo</Badge.Badge><span>This prototype does not have a live Zoom connection. Status comes from the server.</span></div>
-	<div class="health-grid"><div class="panel health-cell"><span>Status</span><b><span class="status-dot"></span>{settings.connected?'Connected':'Not connected'}</b></div><div class="panel health-cell"><span>Last webhook</span><b>{webhookTime(settings.last_webhook)}</b></div><div class="panel health-cell"><span>Live streams</span><b>{settings.live_streams}</b></div><div class="panel health-cell"><span>Calls this week</span><b>{settings.calls_this_week}</b></div></div>
-	{#if error}<Alert.Root variant="destructive" class="mb-4"><Alert.Title>Request failed</Alert.Title><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
-	<div class="admin-columns"><div class="column">
-		<Card.Root class="panel-pad"><h2>Setup checklist</h2><p class="muted small">Configure a Zoom General App and paste the credentials below.</p>
-			<div class="step"><span class="step-num">1</span><div><b>Create a General App</b><small>Zoom Marketplace → Develop → Build App → General App</small><a href="https://marketplace.zoom.us/" target="_blank" rel="noreferrer">Open Zoom Marketplace <ExternalLink size={12}/></a></div></div>
-			<div class="step"><span class="step-num">2</span><div><b>Set the RTMS webhook URL</b><small class="mono">{settings.webhook_url}</small><small>Subscribe to meeting.rtms_started, meeting.rtms_stopped, and meeting.rtms_interrupted.</small></div></div>
-			<div class="step"><span class="step-num">3</span><div><b>Add transcript and chat scopes</b><small>meeting:read:meeting_transcript · meeting:read:meeting_chat</small></div></div>
-			<div class="step"><span class="step-num">4</span><div><b>Turn on realtime meeting content</b><small>Zoom Admin → Account Settings → Zoom Apps. This server cannot verify the account-level setting.</small></div></div>
-		</Card.Root>
-		<Card.Root class="panel-pad"><div class="row-between"><div><h2>Recent webhooks</h2><p class="muted small">Events reported to this server.</p></div><Radio size={17}/></div>
-			{#if settings.webhooks?.length}<div class="webhook-list">{#each settings.webhooks ?? [] as hook}<div class="webhook-row"><time>{relativeDate(hook.at)}</time><span><b>{hook.event}</b><small>{hook.topic||'No meeting topic'}</small></span><Badge.Badge variant="outline">{hook.outcome}</Badge.Badge></div>{/each}</div>{:else}<p class="empty-inline">No webhook events have been received.</p>{/if}
-		</Card.Root>
-	</div><div class="column">
-		<Card.Root class="panel-pad"><h2>App credentials</h2><p class="muted small">Secrets are write-only. Saved values are only shown by their last four characters.</p>
-			<div class="form-grid"><div class="field"><label for="client-id">Client ID</label><input id="client-id" bind:value={clientId} autocomplete="off" placeholder="Zoom app client ID"/></div><div class="field"><label for="client-secret">Client secret</label><input id="client-secret" type="password" bind:value={clientSecret} autocomplete="new-password" placeholder={settings.credentials.client_secret_suffix ? `Saved ••••${settings.credentials.client_secret_suffix} · enter to replace` : 'Enter client secret'}/></div><div class="field"><span class="field-label">Webhook secret</span><div class="readonly-secret">{settings.credentials.webhook_secret_configured?'Set by server environment':'Not configured on server'}</div><small class="muted">ZOOM_WEBHOOK_SECRET is managed by the server environment.</small></div></div>
-			<div class="capture-box"><h3>What to capture</h3><label><Switch.Root bind:checked={transcript}/> <span><b>Transcript</b><small>Zoom’s live transcription</small></span></label><label><Switch.Root bind:checked={chat}/> <span><b>Chat</b><small>Public “Everyone” chat only</small></span></label><div class="deferred-row"><span>Audio and shared media</span><Badge.Badge variant="secondary">Deferred</Badge.Badge></div></div>
-			<Button.Root disabled={saving} onclick={save}>{saving?'Saving…':'Save credentials'}</Button.Root>
-		</Card.Root>
-		<Card.Root class="panel-pad demo-controls"><h2>Demo controls</h2><p class="muted small">These controls create simulated calls for local testing. They do not contact Zoom.</p>
-			{#if demoCall}<div class="demo-call"><span><b>{demoCall.topic}</b><small>Simulated {demoCall.status} call</small></span><a href={'/calls/'+demoCall.id}>Open call →</a>{#if demoCall.status==='live'}<Button.Root variant="outline" size="sm" onclick={stopDemo}><Square size={13}/> Stop</Button.Root>{/if}</div>{:else}<Button.Root variant="outline" onclick={startDemo}><Play size={14}/> Start simulated call</Button.Root>{/if}
-		</Card.Root>
-	</div></div>
-	{#if notice}<div class="save-notice"><Check size={14}/>{notice}</div>{/if}
-{/if}
 
-<style>
-	.demo-banner{display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:14px;background:var(--muted);border-radius:9px;color:var(--muted-foreground);font-size:12px}
-	.health-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
-	.health-cell{padding:12px 14px}.health-cell span{display:block;color:var(--muted-foreground);font-size:12px}.health-cell b{display:flex;gap:7px;align-items:center;font-weight:600;margin-top:3px}
-	.status-dot{width:8px;height:8px;border-radius:50%;background:var(--muted-foreground)}
-	.admin-columns{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:14px;align-items:start}.column{display:grid;gap:14px;min-width:0}
-	.column h2{margin:0;font-size:15px}.column p.muted{margin:4px 0 14px}
-	.step{display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;padding:10px 0;border-top:1px solid var(--border)}
-	.step-num{width:21px;height:21px;display:grid;place-items:center;border-radius:50%;background:var(--muted);font-size:11px;font-weight:600}
-	.step div{display:grid;gap:3px}.step b{font-size:13px;font-weight:550}.step small{color:var(--muted-foreground);font-size:11px}.step a{display:flex;gap:4px;align-items:center;font-size:11px;font-weight:550}
-	.webhook-list{display:grid}.webhook-row{display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--border);font-size:12px}.webhook-row time{font:10px ui-monospace,monospace;color:var(--muted-foreground);white-space:nowrap}.webhook-row span{flex:1;min-width:0;display:grid}.webhook-row small{color:var(--muted-foreground)}.empty-inline{color:var(--muted-foreground);font-size:12px}
-	.readonly-secret{padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--muted);font-size:13px}
-	.capture-box{border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:12px 0;display:grid;gap:10px}.capture-box h3{margin:0;font-size:13px}.capture-box label{display:flex;gap:10px;align-items:center}.capture-box label span{display:grid}.capture-box label b{font-size:12px;font-weight:550}.capture-box label small{font-size:11px;color:var(--muted-foreground)}.deferred-row{display:flex;justify-content:space-between;color:var(--muted-foreground);font-size:12px}
-	.demo-call{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.demo-call span{display:grid;flex:1}.demo-call small{color:var(--muted-foreground);font-size:11px}.demo-call a{font-size:12px;font-weight:550}.save-notice{position:fixed;right:20px;bottom:20px;padding:10px 14px;background:var(--foreground);color:var(--background);border-radius:9px;display:flex;gap:8px;align-items:center}
-	@media(max-width:1000px){.health-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-columns{grid-template-columns:1fr}}
-</style>
+{#if view === 'forbidden'}
+	<Empty.Root class="mx-auto max-w-xl">
+		<Empty.Header>
+			<Empty.Media variant="icon"><ShieldAlert aria-hidden="true" /></Empty.Media>
+			<h1 class="text-2xl font-semibold tracking-tight">This page is for admins</h1>
+			<Empty.Description class="text-base">Ask an admin if something about the Zoom connection needs changing.</Empty.Description>
+		</Empty.Header>
+		<Empty.Content><Button href="/calls" variant="outline">Back to calls</Button></Empty.Content>
+	</Empty.Root>
+{:else}
+	<div class="flex flex-col gap-8">
+		<header class="flex flex-wrap items-start justify-between gap-4">
+			<div class="flex max-w-prose flex-col gap-2">
+				<h1 class="text-3xl font-semibold tracking-tight">Zoom connection</h1>
+				<p class="text-base text-muted-foreground">Check that Zoom is sending calls here, and choose what gets recorded. Only admins see this page.</p>
+			</div>
+			{#if view === 'ready'}
+				<Button variant="outline" onclick={checkAgain} disabled={checking}>
+					{#if checking}<Spinner aria-hidden="true" role="presentation" />{:else}<RefreshCw aria-hidden="true" />{/if}Check again
+				</Button>
+			{/if}
+		</header>
+		<p class="sr-only" role="status">{checked}</p>
+
+		{#if view === 'loading'}
+			<p class="sr-only" role="status">Loading Zoom settings…</p>
+			<div class="grid grid-cols-2 gap-3 md:grid-cols-4">{#each [0, 1, 2, 3] as i (i)}<Skeleton class="h-20" />{/each}</div>
+			<Skeleton class="h-64" />
+		{:else if view === 'error'}
+			<Alert.Root variant="destructive">
+				<Alert.Title>We couldn’t load the Zoom settings</Alert.Title>
+				<Alert.Description>
+					<p>{loadError}</p>
+					<Button variant="outline" size="sm" class="mt-2" onclick={checkAgain}>Try again</Button>
+				</Alert.Description>
+			</Alert.Root>
+		{:else if settings}
+			{#if demo}
+				<Alert.Root>
+					<FlaskConical aria-hidden="true" />
+					<Alert.Title>This is a demo server</Alert.Title>
+					<Alert.Description>
+						<p>It isn’t connected to Zoom. Use <a href="#demo" class="font-medium text-foreground underline underline-offset-4">Demo controls</a> at the bottom of this page to simulate a call.</p>
+					</Alert.Description>
+				</Alert.Root>
+			{/if}
+
+			<section aria-labelledby="status-h" class="flex flex-col gap-3">
+				<h2 id="status-h" class="text-lg font-semibold">Status</h2>
+				<dl class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+					<div class="flex flex-col gap-1 rounded-xl border p-4">
+						<dt class="text-sm text-muted-foreground">Connection</dt>
+						<dd class="flex items-center gap-2 text-lg font-semibold">
+							<span aria-hidden="true" class="size-2.5 rounded-full {settings.connected ? 'bg-success' : 'bg-muted-foreground'}"></span>
+							{settings.connected ? 'Connected' : 'Not connected'}
+						</dd>
+					</div>
+					<div class="flex flex-col gap-1 rounded-xl border p-4">
+						<dt class="text-sm text-muted-foreground">Last message from Zoom</dt>
+						<dd class="text-lg font-semibold">{settings.last_webhook ? ago(settings.last_webhook) : 'None yet'}</dd>
+					</div>
+					<div class="flex flex-col gap-1 rounded-xl border p-4">
+						<dt class="text-sm text-muted-foreground">Live calls</dt>
+						<dd class="text-lg font-semibold tabular-nums">{settings.live_streams}</dd>
+					</div>
+					<div class="flex flex-col gap-1 rounded-xl border p-4">
+						<dt class="text-sm text-muted-foreground">Calls this week</dt>
+						<dd class="text-lg font-semibold tabular-nums">{settings.calls_this_week}</dd>
+					</div>
+				</dl>
+			</section>
+
+			<div class="grid items-start gap-6 lg:grid-cols-2">
+				<div class="flex min-w-0 flex-col gap-6">
+					<Card.Root>
+						<Card.Header>
+							<h2 class="text-lg font-semibold">Set up Zoom</h2>
+							<Card.Description>Do this once, in Zoom, with a Zoom admin account.</Card.Description>
+						</Card.Header>
+						<Card.Content>
+							<ol class="flex flex-col gap-5">
+								<li class="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-3">
+									<span aria-hidden="true" class="grid size-7 place-items-center rounded-full bg-muted text-sm font-semibold">1</span>
+									<div class="flex flex-col gap-1">
+										<h3 class="font-medium">Create a General App</h3>
+										<p class="text-sm text-muted-foreground">In the Zoom App Marketplace, go to Develop, then Build App, then General App.</p>
+										<a href="https://marketplace.zoom.us/" target="_blank" rel="noreferrer" class="inline-flex w-fit items-center gap-1 text-sm font-medium underline underline-offset-4">
+											Open Zoom App Marketplace<ExternalLink aria-hidden="true" class="size-3.5" /><span class="sr-only"> (opens in a new tab)</span>
+										</a>
+									</div>
+								</li>
+								<li class="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-3">
+									<span aria-hidden="true" class="grid size-7 place-items-center rounded-full bg-muted text-sm font-semibold">2</span>
+									<div class="flex min-w-0 flex-col gap-2">
+										<h3 class="font-medium">Point its webhook here</h3>
+										<label for="webhook-url" class="sr-only">Webhook URL</label>
+										<div class="flex gap-2">
+											<input
+												id="webhook-url"
+												readonly
+												value={settings.webhook_url}
+												class="h-9 min-w-0 flex-1 rounded-md border bg-muted/50 px-2.5 font-mono text-xs"
+												onfocus={(e) => e.currentTarget.select()}
+											/>
+											<CopyButton text={settings.webhook_url} label="Copy webhook URL" done="Webhook URL copied" iconOnly size="icon" />
+										</div>
+										<p class="text-sm text-muted-foreground">
+											Subscribe to <code class="font-mono text-xs">meeting.rtms_started</code>, <code class="font-mono text-xs">meeting.rtms_stopped</code> and <code class="font-mono text-xs">meeting.rtms_interrupted</code>.
+										</p>
+									</div>
+								</li>
+								<li class="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-3">
+									<span aria-hidden="true" class="grid size-7 place-items-center rounded-full bg-muted text-sm font-semibold">3</span>
+									<div class="flex flex-col gap-1">
+										<h3 class="font-medium">Add the transcript and chat scopes</h3>
+										<p class="text-sm text-muted-foreground">
+											<code class="font-mono text-xs [overflow-wrap:anywhere]">meeting:read:meeting_transcript</code> and <code class="font-mono text-xs [overflow-wrap:anywhere]">meeting:read:meeting_chat</code>
+										</p>
+									</div>
+								</li>
+								<li class="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-3">
+									<span aria-hidden="true" class="grid size-7 place-items-center rounded-full bg-muted text-sm font-semibold">4</span>
+									<div class="flex flex-col gap-1">
+										<h3 class="font-medium">Turn on realtime meeting content</h3>
+										<p class="text-sm text-muted-foreground">In Zoom’s admin settings, under Zoom Apps. We can’t check this setting from here.</p>
+									</div>
+								</li>
+							</ol>
+						</Card.Content>
+					</Card.Root>
+
+					<section aria-labelledby="webhooks-h" class="flex flex-col gap-3">
+						<h2 id="webhooks-h" class="text-lg font-semibold">Recent messages from Zoom</h2>
+						{#if settings.webhooks?.length}
+							<div class="rounded-xl border">
+								<Table.Root>
+									<Table.Caption class="sr-only">Recent webhook messages, newest first</Table.Caption>
+									<Table.Header>
+										<Table.Row>
+											<Table.Head scope="col" class="px-4">When</Table.Head>
+											<Table.Head scope="col">Message</Table.Head>
+											<Table.Head scope="col" class="px-4">Result</Table.Head>
+										</Table.Row>
+									</Table.Header>
+									<Table.Body>
+										{#each settings.webhooks as hook, i (i)}
+											{@const r = result(hook.outcome)}
+											<Table.Row>
+												<Table.Cell class="px-4 align-top whitespace-nowrap text-muted-foreground"><time datetime={hook.at}>{ago(hook.at)}</time></Table.Cell>
+												<th scope="row" class="py-2 pr-2 text-left align-top font-normal whitespace-normal">
+													<span class="block font-medium">{messages[hook.event] || hook.event || 'Unknown message'}</span>
+													{#if hook.topic}<span class="block text-muted-foreground">{hook.topic}</span>{/if}
+												</th>
+												<Table.Cell class="px-4 align-top"><Badge variant={r.variant}>{r.text}</Badge></Table.Cell>
+											</Table.Row>
+										{/each}
+									</Table.Body>
+								</Table.Root>
+							</div>
+						{:else}
+							<p class="rounded-xl border border-dashed p-6 text-center text-muted-foreground">Nothing from Zoom yet. Messages appear here once the webhook is set up.</p>
+						{/if}
+					</section>
+				</div>
+
+				<Card.Root>
+					<Card.Header>
+						<h2 class="text-lg font-semibold">App credentials</h2>
+						<Card.Description>From your Zoom app’s App Credentials page.</Card.Description>
+					</Card.Header>
+					<Card.Content>
+						<form class="flex flex-col gap-6" onsubmit={save}>
+							<Field.Group>
+								<Field.Field>
+									<Field.Label for="client-id">Client ID</Field.Label>
+									<Input id="client-id" bind:value={clientId} autocomplete="off" spellcheck={false} class="font-mono" />
+								</Field.Field>
+								<Field.Field>
+									<Field.Label for="client-secret">Client secret</Field.Label>
+									<Input id="client-secret" type="password" bind:value={clientSecret} autocomplete="off" aria-describedby="client-secret-help" />
+									<Field.Description id="client-secret-help">
+										{#if settings.credentials.client_secret_suffix}
+											Saved secret ends in <span class="font-mono">{settings.credentials.client_secret_suffix}</span>. We never show it again. Leave this blank to keep it.
+										{:else}
+											No secret saved yet.
+										{/if}
+									</Field.Description>
+								</Field.Field>
+								<p class="text-sm text-muted-foreground">
+									Webhook secret: {settings.credentials.webhook_secret_configured ? 'set on the server.' : 'not set on the server. Add ZOOM_WEBHOOK_SECRET to its environment.'}
+								</p>
+							</Field.Group>
+
+							<fieldset class="flex flex-col gap-4 border-t pt-5">
+								<legend class="float-left mb-4 w-full font-semibold">What to record</legend>
+								<div class="flex items-start justify-between gap-4">
+									<div class="flex flex-col gap-0.5">
+										<label for="capture-transcript" class="font-medium">Transcript</label>
+										<p id="capture-transcript-help" class="text-sm text-muted-foreground">What people say, from Zoom’s live transcription</p>
+									</div>
+									<Switch id="capture-transcript" bind:checked={transcript} aria-describedby="capture-transcript-help" />
+								</div>
+								<div class="flex items-start justify-between gap-4">
+									<div class="flex flex-col gap-0.5">
+										<label for="capture-chat" class="font-medium">Chat</label>
+										<p id="capture-chat-help" class="text-sm text-muted-foreground">Messages sent to everyone. Private messages are never recorded.</p>
+									</div>
+									<Switch id="capture-chat" bind:checked={chat} aria-describedby="capture-chat-help" />
+								</div>
+								<p class="text-sm text-muted-foreground">Audio and video aren’t recorded.</p>
+							</fieldset>
+
+							{#if saveError}<p role="alert" class="text-sm text-destructive">{saveError}</p>{/if}
+							<div class="flex items-center gap-3">
+								<Button type="submit" disabled={saving}>
+									{#if saving}<Spinner aria-hidden="true" role="presentation" />Saving…{:else}Save changes{/if}
+								</Button>
+								<span role="status" class="text-sm text-muted-foreground">{saved}</span>
+							</div>
+						</form>
+					</Card.Content>
+				</Card.Root>
+			</div>
+
+			{#if demo}
+				<section id="demo" aria-labelledby="demo-h" class="flex scroll-mt-6 flex-col gap-3 rounded-xl border border-dashed p-6">
+					<h2 id="demo-h" class="text-lg font-semibold">Demo controls</h2>
+					<p class="text-muted-foreground">Start a pretend call that fills in like a real one. Nothing is sent to Zoom.</p>
+					{#if demoCall}
+						<div class="flex flex-wrap items-center gap-3 rounded-lg bg-muted/50 p-3">
+							<div class="flex min-w-0 flex-1 flex-col gap-1">
+								<a href="/calls/{demoCall.id}" class="font-medium underline underline-offset-4">{demoCall.topic}</a>
+								<CallStatus status={demoCall.status} />
+							</div>
+							{#if demoCall.status === 'live'}
+								<Button variant="outline" onclick={stopDemo} disabled={demoBusy}><Square aria-hidden="true" />Stop call</Button>
+							{:else}
+								<Button variant="outline" onclick={startDemo} disabled={demoBusy}><Play aria-hidden="true" />Start another</Button>
+							{/if}
+						</div>
+					{:else}
+						<Button class="w-fit" onclick={startDemo} disabled={demoBusy}>
+							{#if demoBusy}<Spinner aria-hidden="true" role="presentation" />{:else}<Play aria-hidden="true" />{/if}Start a simulated call
+						</Button>
+					{/if}
+					{#if demoError}<p role="alert" class="text-sm text-destructive">{demoError}</p>{/if}
+				</section>
+			{/if}
+		{/if}
+	</div>
+{/if}
