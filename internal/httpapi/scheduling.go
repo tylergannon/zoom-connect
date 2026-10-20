@@ -371,17 +371,21 @@ func (a *Server) stopRTMSStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err := a.h.changeCall(r.Context(), func(tx pgx.Tx, emit emitCallEvent) (string, string, map[string]any, error) {
-		var id string
+		var callID pgtype.Text
 		if _, err := tx.Exec(r.Context(), `INSERT INTO rtms_streams(stream_id,status) VALUES($1,$2) ON CONFLICT DO NOTHING`, r.PathValue("streamId"), in.Status); err != nil {
 			return "", "", nil, err
 		}
-		err := tx.QueryRow(r.Context(), `UPDATE rtms_streams SET status=$2,interrupted_at=CASE WHEN $2='interrupted' THEN now() ELSE NULL END WHERE stream_id=$1 AND (status='live' OR (status='interrupted' AND $2='stopped')) RETURNING call_id`, r.PathValue("streamId"), in.Status).Scan(&id)
+		err := tx.QueryRow(r.Context(), `UPDATE rtms_streams SET status=$2,interrupted_at=CASE WHEN $2='interrupted' THEN now() ELSE NULL END WHERE stream_id=$1 AND (status='live' OR (status='interrupted' AND $2='stopped')) RETURNING call_id`, r.PathValue("streamId"), in.Status).Scan(&callID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", "", nil, nil
 		}
 		if err != nil {
 			return "", "", nil, err
 		}
+		if !callID.Valid {
+			return "", "", nil, nil // Closed tombstone for a stream that never attached.
+		}
+		id := callID.String
 		if in.Status == "interrupted" {
 			return id, "stream.paused", map[string]any{"reason": "Zoom connection interrupted; waiting up to two minutes for recovery"}, nil
 		}
