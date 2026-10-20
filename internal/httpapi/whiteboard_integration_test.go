@@ -409,6 +409,10 @@ func TestWhiteboardPublishAgainstFakeZoom(t *testing.T) {
 	if asMap(out["meeting"])["automatic"] != false {
 		t.Fatalf("publish must say the board is not opened in the meeting: %v", out["meeting"])
 	}
+	var leaked int
+	if err := a.s.Pool.QueryRow(context.Background(), `SELECT count(*) FROM call_events WHERE strpos(data::text, $1) > 0`, fakeZoomToken).Scan(&leaked); err != nil || leaked != 0 {
+		t.Fatalf("stored events contain the Zoom token: %d %v", leaked, err)
+	}
 
 	got := calls()
 	if len(got) != 3 {
