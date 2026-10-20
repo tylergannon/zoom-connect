@@ -8,6 +8,8 @@
  let { callId, events }: { callId: string; events: EventItem[] } = $props();
  let status = $state<WhiteboardStatus | null>(null);
  let error = $state('');
+ // Kept apart from error so the status refresh after a failed publish cannot clear it.
+ let publishError = $state('');
  let busy = $state(false);
  let boardEvents = $derived(events.filter(e => e.kind.startsWith('board.')).length);
  let draft = $derived(status?.latest.draft ? status.latest.draft.data as unknown as BoardDraft : null);
@@ -23,16 +25,18 @@
  }
  async function publish() {
   if (!status?.latest.draft) return;
-  busy = true; error = '';
-  try { await api(`/api/calls/${encodeURIComponent(callId)}/whiteboard/publish`, { method: 'POST', body: JSON.stringify({ draft_seq: status.latest.draft.seq }) }); await load(); }
-  catch (e) { error = errorMessage(e); await load(); }
-  finally { busy = false; }
+  busy = true; publishError = '';
+  try { await api(`/api/calls/${encodeURIComponent(callId)}/whiteboard/publish`, { method: 'POST', body: JSON.stringify({ draft_seq: status.latest.draft.seq }) }); }
+  catch (e) { publishError = errorMessage(e); }
+  await load();
+  busy = false;
  }
  $effect(() => { void boardEvents; untrack(() => void load()); });
 </script>
 <Card.Root class="board-panel">
  <div class="board-head"><h2><PenTool size={17}/> Zoom Whiteboard draft</h2>{#if status}<span class="board-mode" class:native={status.mode === 'native'}>{status.mode === 'native' ? 'Native publishing on' : 'Local preview only'}</span>{/if}</div>
  {#if error}<p class="board-error" role="status">{error}</p>{/if}
+ {#if publishError}<p class="board-error" role="alert">{publishError}</p>{/if}
  {#if draft && status?.latest.draft}
   <div class="board-meta"><b>{draft.title}</b><span class="muted small">{status.concepts.find(c => c.id === draft.concept)?.name || draft.concept} · {draft.cards.length} cards{draft.agent ? ` · drafted by agent “${draft.agent}”` : ''} · event #{status.latest.draft.seq}</span></div>
   <div class="board-canvas"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Board preview: ${draft.title}`}>
