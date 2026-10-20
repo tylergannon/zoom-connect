@@ -6,6 +6,7 @@
 	import SharingDialog from './SharingDialog.svelte';
 	import ScreenShare from './ScreenShare.svelte';
 	import ScheduledCallNotice from './ScheduledCallNotice.svelte';
+	import CallArtifacts from './CallArtifacts.svelte';
 	import { api, APIError, errorMessage, duration, relativeDate, initials } from '#lib/api';
 	import type { Call, EventItem, Person } from '#lib/types';
 
@@ -156,6 +157,7 @@
 		<aside class="detail-side">
 			<Card.Root class="panel-pad"><h2>In this call · {call.participants.length}</h2><div class="people-list">{#each call.participants as person}<div class="person-row"><span class="avatar">{initials(person.name)}</span><span><b>{person.name}</b><small>{person.email || 'Participant'}</small></span>{#if person.id===call.host.id}<span class="badge-muted">Host</span>{/if}</div>{/each}</div></Card.Root>
 			<Card.Root class="panel-pad"><h2>Agent access</h2><p class="muted small">Connect with an API key now. This URL waits before the call and delivers events as they arrive.</p><pre class="code">curl -N -H "Authorization: Bearer $ZC_KEY" {pageOrigin}/api/calls/{call.id}/stream</pre><a class="text-link" href="/keys">Manage keys →</a></Card.Root>
+			<CallArtifacts {call} origin={pageOrigin}/>
 		</aside>
 	</div>
 {/if}

@@ -31,6 +31,8 @@ type Server struct {
 	recorder       http.Handler
 	recorderHealth string
 	screens        screenStorage
+	artifacts      artifactHub
+	artifactTick   time.Duration // access and version recheck; zero means 3s
 }
 
 func New(next http.Handler) (http.Handler, error) {
@@ -124,6 +126,14 @@ func (a *Server) routes(m *http.ServeMux) {
 	priv("GET /api/v1/calls/{id}/transcript", a.transcript)
 	priv("GET /api/stream", a.announcements)
 	priv("GET /api/v1/stream", a.announcements)
+	for _, base := range []string{"/api/calls/{id}/artifacts", "/api/v1/calls/{id}/artifacts"} {
+		priv("GET "+base, a.listArtifacts)
+		priv("POST "+base, a.createArtifact)
+		priv("GET "+base+"/{artifactId}", a.getArtifact)
+		priv("PUT "+base+"/{artifactId}", a.updateArtifact)
+		priv("GET "+base+"/{artifactId}/stream", a.artifactStream)
+		priv("GET "+base+"/{artifactId}/versions/{version}", a.getArtifactVersion)
+	}
 }
 
 type principalKey struct{}

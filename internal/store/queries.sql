@@ -107,3 +107,45 @@ UPDATE calls SET last_seq=GREATEST(last_seq,$2) WHERE id=$1;
 
 -- name: ListLegacyArchives :many
 SELECT id,event_path FROM calls WHERE event_path<>'';
+
+-- name: LockCallStatus :one
+SELECT status FROM calls WHERE id=$1 FOR UPDATE;
+
+-- name: CountCallArtifacts :one
+SELECT count(*) FROM call_artifacts WHERE call_id=$1;
+
+-- name: CreateCallArtifact :exec
+INSERT INTO call_artifacts(id,call_id,version,created_by) VALUES($1,$2,1,$3);
+
+-- name: AdvanceCallArtifact :one
+UPDATE call_artifacts SET version=version+1 WHERE id=$1 AND call_id=$2 AND version=$3 RETURNING version;
+
+-- name: CallArtifactVersion :one
+SELECT version FROM call_artifacts WHERE id=$1 AND call_id=$2;
+
+-- name: InsertArtifactVersion :exec
+INSERT INTO call_artifact_versions(artifact_id,version,title,html,author_id,key_name) VALUES($1,$2,$3,$4,$5,$6);
+
+-- name: PruneArtifactVersions :exec
+DELETE FROM call_artifact_versions WHERE artifact_id=$1 AND version<=$2;
+
+-- name: GetCallArtifact :one
+SELECT a.id,a.call_id,a.version,a.created_at,cu.id AS created_by_id,cu.name AS created_by_name,
+       v.title,v.html,v.key_name,v.created_at AS updated_at,uu.id AS updated_by_id,uu.name AS updated_by_name
+FROM call_artifacts a
+JOIN call_artifact_versions v ON v.artifact_id=a.id AND v.version=a.version
+JOIN users cu ON cu.id=a.created_by JOIN users uu ON uu.id=v.author_id
+WHERE a.id=$1 AND a.call_id=$2;
+
+-- name: ListCallArtifacts :many
+SELECT a.id,a.call_id,a.version,a.created_at,cu.id AS created_by_id,cu.name AS created_by_name,
+       v.title,octet_length(v.html)::bigint AS bytes,v.key_name,v.created_at AS updated_at,uu.id AS updated_by_id,uu.name AS updated_by_name
+FROM call_artifacts a
+JOIN call_artifact_versions v ON v.artifact_id=a.id AND v.version=a.version
+JOIN users cu ON cu.id=a.created_by JOIN users uu ON uu.id=v.author_id
+WHERE a.call_id=$1 ORDER BY a.created_at,a.id;
+
+-- name: GetArtifactVersion :one
+SELECT v.version,v.title,v.html,v.key_name,v.created_at,u.id AS author_id,u.name AS author_name
+FROM call_artifact_versions v JOIN call_artifacts a ON a.id=v.artifact_id JOIN users u ON u.id=v.author_id
+WHERE v.artifact_id=$1 AND a.call_id=$2 AND v.version=$3;
