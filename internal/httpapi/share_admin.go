@@ -328,8 +328,6 @@ func (a *Server) announcements(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	_, _ = fmt.Fprint(w, ": connected\n\n")
-	fl.Flush()
 	seen := map[string]db.ListCallsRow{}
 	send := func(kind string, c db.ListCallsRow) {
 		payload, _ := json.Marshal(map[string]any{"id": c.ID, "topic": c.Topic, "status": c.Status, "url": "/calls/" + c.ID})
@@ -356,7 +354,7 @@ func (a *Server) announcements(w http.ResponseWriter, r *http.Request) {
 				} else if c.SharedBy != "" {
 					send("call.shared", c)
 				}
-			} else if old.Status == "scheduled" && c.Status == "live" {
+			} else if old.Status != "live" && c.Status == "live" {
 				send("call.started", c)
 			} else if old.Status != c.Status && c.Status == "cancelled" {
 				send("call.cancelled", c)
@@ -374,6 +372,8 @@ func (a *Server) announcements(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	poll(true)
+	_, _ = fmt.Fprint(w, ": connected\n\n")
+	fl.Flush()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {

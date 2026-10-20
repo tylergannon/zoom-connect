@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tylergannon/zoom-connect/internal/store"
 )
@@ -49,8 +51,37 @@ func TestRuntimeRestartSupersessionAndShareAccess(t *testing.T) {
 		return post("/api/rtms/streams", string(body))
 	}
 	old := attach("runtime-old", "stream-old", "12345678901")
+	// The connection marker follows the global feed's initial snapshot, so
+	// a client cannot lose a transition immediately after connecting.
+	feedCtx, feedCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer feedCancel()
+	feedReq, _ := http.NewRequestWithContext(feedCtx, "GET", server.URL+"/api/stream", nil)
+	feedReq.AddCookie(cookie)
+	feed, err := server.Client().Do(feedReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer feed.Body.Close()
+	feedReader := bufio.NewReader(feed.Body)
+	waitFor := func(want string) {
+		t.Helper()
+		for {
+			line, err := feedReader.ReadString('\n')
+			if err != nil {
+				t.Fatalf("global stream waiting for %s: %v", want, err)
+			}
+			if strings.Contains(line, want) {
+				return
+			}
+		}
+	}
+	waitFor(": connected")
 	post("/api/rtms/streams/stream-old/stop", `{"status":"stopped"}`)
+	waitFor("event: call.ended")
 	resumed := attach("runtime-old", "stream-resumed", "12345678901")
+	waitFor("event: call.started")
+	feedCancel()
+	feed.Body.Close()
 	if resumed.ID != old.ID || resumed.Status != "live" || resumed.Ended != nil {
 		t.Fatalf("resume: %+v", resumed)
 	}
