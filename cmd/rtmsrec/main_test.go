@@ -98,18 +98,25 @@ var _ = http.StatusOK
 func TestSignedStartCarriesMeetingNumberToApp(t *testing.T) {
 	for _, number := range []string{`12345678901`, `"12345678901"`, `null`} {
 		t.Run(number, func(t *testing.T) {
-			var got zoomIdentity
+			gotIdentity := make(chan zoomIdentity, 1)
+			stopped := make(chan bool, 1)
 			app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/rtms/streams/stream-one/stop" {
+					stopped <- true
+					return
+				}
 				if r.URL.Path != "/api/rtms/streams" {
 					t.Errorf("unexpected path: %s", r.URL.Path)
 				}
+				var got zoomIdentity
 				json.NewDecoder(r.Body).Decode(&got)
+				gotIdentity <- got
 				json.NewEncoder(w).Encode(map[string]string{"id": "scheduled-one", "status": "live", "stream_status": "live"})
 			}))
 			defer app.Close()
 			sv := newTestServer(t)
 			sv.cfg.recDir = t.TempDir()
-			sv.cfg.bridge = &liveBridge{base: app.URL, key: "key", client: app.Client(), calls: map[string]string{}, closed: map[string]bool{}}
+			sv.cfg.bridge = &liveBridge{base: app.URL, key: "key", client: app.Client(), streams: map[string]*bridgeStream{}}
 			body := `{"event":"meeting.rtms_started","payload":{"meeting_id":` + number + `,"meeting_uuid":"runtime-one","rtms_stream_id":"stream-one","server_urls":"ws://127.0.0.1:1"}}`
 			ts := strconv.FormatInt(time.Now().Unix(), 10)
 			req := httptest.NewRequest("POST", "/zoom/webhook", strings.NewReader(body))
@@ -117,6 +124,12 @@ func TestSignedStartCarriesMeetingNumberToApp(t *testing.T) {
 			req.Header.Set("x-zm-signature", sign("whsec", ts, body))
 			response := httptest.NewRecorder()
 			sv.webhook(response, req)
+			var got zoomIdentity
+			select {
+			case got = <-gotIdentity:
+			case <-time.After(5 * time.Second):
+				t.Fatal("attachment never arrived")
+			}
 			wantNumber := "12345678901"
 			if number == "null" {
 				wantNumber = ""
@@ -124,7 +137,11 @@ func TestSignedStartCarriesMeetingNumberToApp(t *testing.T) {
 			if got.MeetingID != wantNumber || got.MeetingUUID != "runtime-one" || got.StreamID != "stream-one" {
 				t.Fatalf("identity: %+v", got)
 			}
-			sv.streams["stream-one"].closeAll()
+			select {
+			case <-stopped:
+			case <-time.After(5 * time.Second):
+				t.Fatal("failed dial did not retire attachment")
+			}
 		})
 	}
 }

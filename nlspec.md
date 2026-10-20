@@ -35,23 +35,30 @@ UUID, and per-stream RTMS ID remain distinct. Persist runtime and stream
 mappings. Missing meeting numbers cannot be matched to a pending registration,
 but still capture a standalone call by UUID. A new stream for the same UUID
 reopens its stopped/interrupted call, preserving its URL and original start;
-a client that already received `end` can reconnect to that URL. An old stream
-ID never reopens a call. Stop-before-start records a durable closed-stream
+a client that already received `end` can reconnect to that URL. An interrupted stream can resume with the same ID and runtime UUID. A final
+stopped stream ID never reopens a call. Stop-before-start records a durable closed-stream
 tombstone and never claims a later pending registration.
 
 A new runtime UUID on a meeting number supersedes the previous instance.
 Its stale live call becomes interrupted with a durable event; its old stream
 rows close. Persist supersession so delayed streams from that older UUID
 cannot close or claim the newer session. A call ends when its last active
-stream stops. Lifecycle and identity changes, every affected event, and
+stream stops. An interruption emits non-terminal `stream.paused`; the call
+stays open for two minutes while waiting for recovery. A durable interruption
+deadline survives application restarts. Requests and SSE keepalive ticks expire
+unrecovered streams and emit terminal `stream.interrupted` if none remain active.
+Recorder signaling exits report an interruption even without a Zoom stop webhook.
+Lifecycle and identity changes, every affected event, and
 sequence allocation commit together before publication. All routing assumes
 one application instance, as before. Quiet calls are not timed out merely
 because no transcript text arrives.
 
 Scheduled attachment is best effort for upstream capture: on an HTTP client
 error the recorder captures a standalone call using the existing ingestion
-path. Server/network attachment failures receive at most three attempts before
-that fallback. Do not report standalone fallback as delivery to a pending call.
+path. Server/network attachment failures retry with backoff for thirty seconds
+before that fallback. Each stream serializes its own opening data behind
+attachment so retries do not drop opening text or block other calls. Ambiguous
+attachments are retired before fallback; fallback is logged with the call URL. Do not report standalone fallback as delivery to a pending call.
 Fallback still uses the existing authenticated admin ingestion endpoint.
 
 Behavioral claims: a real handler/database integration demonstrates early
@@ -290,7 +297,7 @@ STREAMING    -> RECONNECTING  -- socket closed unexpectedly
 RECONNECTING -> STREAMING     -- resumed
 RECONNECTING -> STOPPED       -- not resumed within 2 min; status interrupted
 STREAMING    -> STOPPED       -- rtms_stopped signal; status stopped
-any          -> STOPPED       -- rtms_interrupted signal; status interrupted
+any          -> RECONNECTING  -- rtms_interrupted signal; non-terminal stream.paused
 ```
 
 Zoom buffers up to 60 s of audio while the client connects; the connect
@@ -546,8 +553,11 @@ lands here.
    does, `final:false` events are stored and streamed as-is; whether `txt`
    output should drop them is undecided.
 3. **Re-sent `rtms_started`.** Resolved for the current prototype by the
-   October 19 amendment: fresh streams resume the same runtime UUID, while
-   duplicate/closed stream IDs remain idempotent. Superseded UUIDs stay closed.
+   October 19 amendment: interrupted streams may resume with the same stream ID
+   and runtime UUID during the two-minute recovery window. Final stopped stream
+   IDs and superseded UUIDs stay closed. Zoom server failover can reuse stream
+   IDs; an rtms_started delivery replaces the prior socket connection. Automatic
+   socket recovery without a new Zoom start remains future work.
 4. **Billing while idle.** Whether Zoom charges for an auto-started stream
    the service never connects to. Affects whether auto-start should stay the
    default.

@@ -381,6 +381,9 @@ func (a *Server) announcements(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-ticker.C:
+			if err := a.expireRTMSInterruptions(r.Context()); err != nil {
+				return
+			}
 			if !a.stillValid(r.Context(), r, p) {
 				return
 			}

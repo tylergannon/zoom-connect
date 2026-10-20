@@ -128,3 +128,108 @@ func TestRuntimeRestartSupersessionAndShareAccess(t *testing.T) {
 		t.Fatalf("host bypassed participant/share access: %s", denied.Status)
 	}
 }
+
+func TestInterruptedStreamKeepsClientAndExpiresDurably(t *testing.T) {
+	dsn := testDatabase(t)
+	t.Setenv("DATABASE_URL", dsn)
+	t.Setenv("AUTH_MODE", "")
+	t.Setenv("RTMS_RECORDER_URL", "")
+	h, err := New(http.NotFoundHandler())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	login := request(t, srv.Client(), "POST", srv.URL+"/api/demo/login", nil, strings.NewReader(`{"email":"dana@acme.co"}`))
+	var cookie *http.Cookie
+	for _, c := range login.Cookies() {
+		if c.Name == "zc_session" {
+			cookie = c
+		}
+	}
+	login.Body.Close()
+	post := func(path, body string) Call {
+		t.Helper()
+		resp := request(t, srv.Client(), "POST", srv.URL+path, cookie, strings.NewReader(body))
+		defer resp.Body.Close()
+		if resp.StatusCode/100 != 2 {
+			raw, _ := io.ReadAll(resp.Body)
+			t.Fatalf("%s: %s %s", path, resp.Status, raw)
+		}
+		var c Call
+		json.NewDecoder(resp.Body).Decode(&c)
+		return c
+	}
+	call := post("/api/calls", `{"invitation":"https://zoom.us/j/55566677788"}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL+"/api/calls/"+call.ID+"/stream", nil)
+	req.AddCookie(cookie)
+	feed, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer feed.Body.Close()
+	reader := bufio.NewReader(feed.Body)
+	until := func(want string) {
+		t.Helper()
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				t.Fatalf("waiting for %s: %v", want, err)
+			}
+			if strings.Contains(line, "event: end") && want != "event: end" {
+				t.Fatal("client ended during recoverable interruption")
+			}
+			if strings.Contains(line, want) {
+				return
+			}
+		}
+	}
+	until(": connected")
+	attach := func() Call {
+		return post("/api/rtms/streams", `{"meeting_id":"55566677788","meeting_uuid":"recoverable","rtms_stream_id":"same-id"}`)
+	}
+	attach()
+	until("event: stream.started")
+	post("/api/rtms/streams/same-id/stop", `{"status":"interrupted"}`)
+	until("event: stream.paused")
+	resumed := attach()
+	if resumed.ID != call.ID || resumed.Status != "live" {
+		t.Fatalf("resume: %+v", resumed)
+	}
+	post("/api/demo/calls/"+call.ID+"/events", `{"kind":"transcript","data":{"text":"after same-ID recovery"}}`)
+	until("after same-ID recovery")
+	// A phantom second stream cannot pin the real call live beyond its persisted deadline.
+	post("/api/rtms/streams", `{"meeting_uuid":"recoverable","rtms_stream_id":"failed-dial"}`)
+	post("/api/rtms/streams/failed-dial/stop", `{"status":"interrupted"}`)
+	post("/api/rtms/streams/same-id/stop", `{"status":"stopped"}`)
+	s, err := store.Open(context.Background(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err = s.Pool.Exec(context.Background(), `UPDATE rtms_streams SET interrupted_at=now()-interval '3 minutes' WHERE stream_id='failed-dial'`); err != nil {
+		t.Fatal(err)
+	}
+	// A new handler shares only the database, not the old handler's memory.
+	fresh, err := New(http.NotFoundHandler())
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted := httptest.NewServer(fresh)
+	defer restarted.Close()
+	resp := request(t, restarted.Client(), "GET", restarted.URL+"/api/calls/"+call.ID, cookie, nil)
+	var ended Call
+	json.NewDecoder(resp.Body).Decode(&ended)
+	resp.Body.Close()
+	if ended.Status != "interrupted" {
+		t.Fatalf("expired call: %+v", ended)
+	}
+	until("event: end")
+	// Final stopped stream IDs never reopen, even after the handler restarts.
+	closed := attach()
+	if closed.Status != "interrupted" {
+		t.Fatalf("closed ID reopened: %+v", closed)
+	}
+}

@@ -148,6 +148,10 @@ func (a *Server) auth(next http.Handler) http.Handler {
 			jsonError(w, 401, "unauthorized")
 			return
 		}
+		if err := a.expireRTMSInterruptions(ctx); err != nil {
+			jsonError(w, 500, "database error")
+			return
+		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, principalKey{}, p)))
 	})
 }
@@ -599,6 +603,9 @@ func (a *Server) stream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case <-tick.C:
+			if err := a.expireRTMSInterruptions(r.Context()); err != nil {
+				return
+			}
 			if !a.stillValid(r.Context(), r, principal(r)) || !a.canAccess(r.Context(), id, principal(r).User.ID) {
 				return
 			}

@@ -13,3 +13,4 @@ CREATE TABLE IF NOT EXISTS rtms_streams (
   call_id text REFERENCES calls(id) ON DELETE CASCADE,
   status text NOT NULL DEFAULT 'live' CHECK (status IN ('live','stopped','interrupted'))
 );
+ALTER TABLE rtms_streams ADD COLUMN IF NOT EXISTS interrupted_at timestamptz;

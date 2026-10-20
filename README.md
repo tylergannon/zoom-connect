@@ -136,14 +136,18 @@ A pending call has `status: "scheduled"` and `started: null`. The optional
 a live call does not block registering the next session. The recorder durably attaches the runtime meeting UUID and
 stream IDs to the registered call; duplicate notifications and recorder restarts
 do not create a second call. Concurrent streams remain separate, and the call
-ends when its last stream stops. A fresh stream for that same runtime UUID
+ends when its last stream stops. Temporary interruptions emit `stream.paused`
+and keep clients connected for up to two minutes. A resumed start can reuse an
+interrupted stream ID; final stopped IDs stay closed. A fresh stream for that same runtime UUID
 can reopen the call at the same URL; a new meeting UUID instead starts a new
 session and interrupts any stale live predecessor. Delayed streams from a
 superseded UUID cannot interrupt the current session. A missing meeting
 number still captures by UUID but cannot match a pending registration.
 If scheduled attachment returns a client error, or server/network errors
-persist for three attempts, capture falls back to a standalone call. That
-fallback preserves capture but does not deliver into the waiting call.
+persist for thirty seconds of retries with backoff, capture falls back to a standalone call. That
+fallback preserves capture but does not deliver into the waiting call; the recorder
+logs its destination URL. If a session resumes after an `end` event, reconnect to
+the same URL with `Last-Event-ID`.
 
 Saving a link prepares the app's downstream subscription. Upstream capture still
 requires Zoom Connect's RTMS app user to start streaming or join with auto-start

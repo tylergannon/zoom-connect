@@ -25,13 +25,14 @@ func (b *liveBridge) screen(streamID string, content map[string]any) {
 		log.Print("screen frame: invalid base64")
 		return
 	}
-	b.mu.Lock()
-	if b.closed[streamID] {
-		b.mu.Unlock()
+	s := b.state(streamID)
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
 		return
 	}
-	id, err := b.call(streamID)
-	b.mu.Unlock()
+	id, err := b.call(streamID, s)
+	s.mu.Unlock()
 	if err != nil {
 		log.Printf("screen bridge call: %v", err)
 		return

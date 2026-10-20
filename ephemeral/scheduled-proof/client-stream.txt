@@ -2,21 +2,21 @@
 
 id: 1
 event: call.scheduled
-data: {"seq":1,"ts":1792456153656,"recv":1792456153656,"kind":"call.scheduled","data":{"scheduled_at":"2026-10-20T15:00:00Z"}}
+data: {"seq":1,"ts":1792457747800,"recv":1792457747800,"kind":"call.scheduled","data":{"scheduled_at":"2026-10-20T15:00:00Z"}}
 
 : keepalive
 
 id: 2
 event: stream.started
-data: {"seq":2,"ts":1792456157002,"recv":1792456157002,"kind":"stream.started","data":{"meeting_uuid":"proof-01M5BBCPHMEXHGY507RK71A5A0","source":"zoom"}}
+data: {"seq":2,"ts":1792457751162,"recv":1792457751162,"kind":"stream.started","data":{"meeting_uuid":"proof-01M5BCXBAK36ABA7Q6ECGMGDBY","source":"zoom"}}
 
 id: 3
 event: transcript
-data: {"seq":3,"ts":1792456157014,"recv":1792456157014,"kind":"transcript","participant":{"id":"speaker","name":"Opening speaker","email":""},"data":{"final":true,"text":"Opening words reach clients that connected early."}}
+data: {"seq":3,"ts":1792457751177,"recv":1792457751177,"kind":"transcript","participant":{"id":"speaker","name":"Opening speaker","email":""},"data":{"final":true,"text":"Opening words reach clients that connected early."}}
 
 id: 4
 event: stream.stopped
-data: {"seq":4,"ts":1792456157049,"recv":1792456157049,"kind":"stream.stopped","data":{"reason":"Zoom stream stopped"}}
+data: {"seq":4,"ts":1792457751290,"recv":1792457751290,"kind":"stream.stopped","data":{"reason":"Zoom stream stopped"}}
 
 event: end
 data: {}

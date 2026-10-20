@@ -219,9 +219,17 @@ func (a *Server) attachRTMSStream(w http.ResponseWriter, r *http.Request) {
 				return "", "", nil, nil
 			} // Durable stop-before-start tombstone.
 			var uuid string
-			err = tx.QueryRow(r.Context(), `SELECT zoom_meeting_uuid FROM calls WHERE id=$1`, existing.String).Scan(&uuid)
+			var superseded pgtype.Text
+			err = tx.QueryRow(r.Context(), `SELECT zoom_meeting_uuid,superseded_by_uuid FROM calls WHERE id=$1`, existing.String).Scan(&uuid, &superseded)
 			if err == nil && uuid != in.MeetingUUID {
 				err = errStreamIdentity
+			}
+			if err == nil && streamStatus == "interrupted" && !superseded.Valid {
+				_, err = tx.Exec(r.Context(), `UPDATE rtms_streams SET status='live',interrupted_at=NULL WHERE stream_id=$1`, in.StreamID)
+				if err == nil {
+					_, err = tx.Exec(r.Context(), `UPDATE calls SET status='live',ended=NULL WHERE id=$1`, existing.String)
+				}
+				return existing.String, "stream.started", map[string]any{"source": "zoom", "meeting_uuid": in.MeetingUUID}, err
 			}
 			return existing.String, "", nil, err
 		}
@@ -309,8 +317,7 @@ func (a *Server) attachRTMSStream(w http.ResponseWriter, r *http.Request) {
 		if status == "live" {
 			return id, "", nil, nil
 		}
-		// A fresh stream may resume a stopped/interrupted runtime, but an old stream
-		// can never reopen one: its durable stream row returned above.
+		// A fresh stream may resume a runtime. Final stopped stream IDs stay closed.
 		_, err = tx.Exec(r.Context(), `UPDATE calls SET status='live',started=COALESCE(started,now()),ended=NULL,zoom_meeting_uuid=$2,zoom_meeting_id=COALESCE(zoom_meeting_id,NULLIF($3,'')) WHERE id=$1`, id, in.MeetingUUID, in.MeetingID)
 		return id, "stream.started", map[string]any{"source": "zoom", "meeting_uuid": in.MeetingUUID}, err
 	})
@@ -368,15 +375,18 @@ func (a *Server) stopRTMSStream(w http.ResponseWriter, r *http.Request) {
 		if _, err := tx.Exec(r.Context(), `INSERT INTO rtms_streams(stream_id,status) VALUES($1,$2) ON CONFLICT DO NOTHING`, r.PathValue("streamId"), in.Status); err != nil {
 			return "", "", nil, err
 		}
-		err := tx.QueryRow(r.Context(), `UPDATE rtms_streams SET status=$2 WHERE stream_id=$1 AND status='live' RETURNING call_id`, r.PathValue("streamId"), in.Status).Scan(&id)
+		err := tx.QueryRow(r.Context(), `UPDATE rtms_streams SET status=$2,interrupted_at=CASE WHEN $2='interrupted' THEN now() ELSE NULL END WHERE stream_id=$1 AND (status='live' OR (status='interrupted' AND $2='stopped')) RETURNING call_id`, r.PathValue("streamId"), in.Status).Scan(&id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", "", nil, nil
 		}
 		if err != nil {
 			return "", "", nil, err
 		}
+		if in.Status == "interrupted" {
+			return id, "stream.paused", map[string]any{"reason": "Zoom connection interrupted; waiting up to two minutes for recovery"}, nil
+		}
 		var active bool
-		err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM rtms_streams WHERE call_id=$1 AND status='live')`, id).Scan(&active)
+		err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM rtms_streams WHERE call_id=$1 AND status IN ('live','interrupted'))`, id).Scan(&active)
 		if err != nil || active {
 			return id, "", nil, err
 		}
@@ -391,6 +401,51 @@ func (a *Server) stopRTMSStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+// Deadlines are persisted, so a process restart cannot reset the recovery window.
+// Requests and open SSE connections sweep expired interruptions; no transcript
+// inactivity timeout is applied to healthy streams.
+func (a *Server) expireRTMSInterruptions(ctx context.Context) error {
+	var due bool
+	if err := a.s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM rtms_streams WHERE status='interrupted' AND interrupted_at < now()-interval '2 minutes')`).Scan(&due); err != nil || !due {
+		return err
+	}
+	_, err := a.h.changeCall(ctx, func(tx pgx.Tx, emit emitCallEvent) (string, string, map[string]any, error) {
+		rows, err := tx.Query(ctx, `UPDATE rtms_streams SET status='stopped',interrupted_at=NULL WHERE status='interrupted' AND interrupted_at < now()-interval '2 minutes' RETURNING call_id`)
+		if err != nil {
+			return "", "", nil, err
+		}
+		ids := map[string]bool{}
+		for rows.Next() {
+			var id pgtype.Text
+			if err = rows.Scan(&id); err != nil {
+				rows.Close()
+				return "", "", nil, err
+			}
+			if id.Valid {
+				ids[id.String] = true
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return "", "", nil, err
+		}
+		for id := range ids {
+			tag, err := tx.Exec(ctx, `UPDATE calls SET status='interrupted',ended=now() WHERE id=$1 AND status='live' AND NOT EXISTS(SELECT 1 FROM rtms_streams WHERE call_id=$1 AND status IN ('live','interrupted'))`, id)
+			if err != nil {
+				return "", "", nil, err
+			}
+			if tag.RowsAffected() > 0 {
+				if err = emit(id, "stream.interrupted", map[string]any{"reason": "Zoom recovery window expired"}); err != nil {
+					return "", "", nil, err
+				}
+			}
+		}
+		return "", "", nil, nil
+	})
+	return err
 }
 
 func callOpen(status string) bool { return status == "scheduled" || status == "live" }

@@ -28,7 +28,7 @@
 	let transcriptElement: HTMLDivElement | undefined = $state();
 	let source: EventSource | null = null;
 	let recheckingAccess = false;
-	const transcriptKinds = new Set(['transcript', 'chat', 'participant.joined', 'participant.left', 'stream.started', 'stream.stopped', 'stream.interrupted', 'speaker.active']);
+	const transcriptKinds = new Set(['transcript', 'chat', 'participant.joined', 'participant.left', 'stream.started', 'stream.paused', 'stream.stopped', 'stream.interrupted', 'speaker.active']);
 	const shownEvents = $derived(events.filter((e) => tab === 'chat' ? e.kind === 'chat' : transcriptKinds.has(e.kind)).filter((e) => !query || `${e.data.text || ''} ${e.kind} ${e.participant?.name || ''}`.toLowerCase().includes(query.toLowerCase())));
 	const showDuration = (started: string | null, ended?: string) => { tick; return duration(started, ended); };
 	$effect(() => {
@@ -86,12 +86,13 @@
 				const item = JSON.parse(msg.data) as EventItem;
 				if (callId !== id) return;
 				if (!events.some((e) => e.seq === item.seq)) events = [...events, item].sort((a,b) => a.seq-b.seq);
-				if (item.kind === 'stream.started' && call) { call = {...call, status:'live', started:new Date(item.ts).toISOString()}; }
+				if (item.kind === 'stream.started' && call) { streamState = 'live'; call = {...call, status:'live', started:call.started || new Date(item.ts).toISOString()}; }
+                if (item.kind === 'stream.paused') streamState = 'reconnecting';
 				if (item.kind === 'call.cancelled') void finish('cancelled');
 				if (item.kind === 'stream.stopped' || item.kind === 'stream.interrupted') void finish(item.kind === 'stream.stopped' ? 'stopped' : 'interrupted');
 			} catch { /* ignore malformed keepalive */ }
 		};
-		for (const kind of ['call.scheduled','call.cancelled','transcript','chat','participant.joined','participant.left','stream.started','stream.stopped','stream.interrupted','speaker.active','screen.frame']) source.addEventListener(kind, accept);
+		for (const kind of ['call.scheduled','call.cancelled','transcript','chat','participant.joined','participant.left','stream.started','stream.paused','stream.stopped','stream.interrupted','speaker.active','screen.frame']) source.addEventListener(kind, accept);
 		source.addEventListener('end', () => { void finish(); });
 		source.onmessage = accept;
 	}
