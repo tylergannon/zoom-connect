@@ -213,8 +213,10 @@ type stream struct {
 	sigMu sync.Mutex
 	sig   *websocket.Conn
 
-	mediaMu sync.Mutex
-	media   map[string]*websocket.Conn
+	mediaMu   sync.Mutex
+	media     map[string]*websocket.Conn
+	closeOnce sync.Once
+	onExit    func()
 }
 
 func (s *stream) signature() string {
@@ -236,7 +238,13 @@ func (s *stream) sendSignaling(msg any) {
 }
 
 func (s *stream) runSignaling(serverURL string) {
-	defer s.closeAll()
+	defer func() {
+		unexpected := s.ctx.Err() == nil
+		s.closeAll()
+		if unexpected && s.onExit != nil {
+			s.onExit()
+		}
+	}()
 	log.Printf("[%s] signaling: dialing %s", s.streamID, serverURL)
 	conn, resp, err := websocket.DefaultDialer.DialContext(s.ctx, serverURL, nil)
 	if err != nil {
@@ -438,19 +446,21 @@ func (s *stream) runMedia(name, u string) {
 }
 
 func (s *stream) closeAll() {
-	s.cancel()
-	s.sigMu.Lock()
-	if s.sig != nil {
-		s.sig.Close()
-	}
-	s.sigMu.Unlock()
-	s.mediaMu.Lock()
-	for _, c := range s.media {
-		c.Close()
-	}
-	s.mediaMu.Unlock()
-	log.Printf("[%s] closed. message counts:\n%s", s.streamID, s.rec.summary())
-	s.rec.close()
+	s.closeOnce.Do(func() {
+		s.cancel()
+		s.sigMu.Lock()
+		if s.sig != nil {
+			s.sig.Close()
+		}
+		s.sigMu.Unlock()
+		s.mediaMu.Lock()
+		for _, c := range s.media {
+			c.Close()
+		}
+		s.mediaMu.Unlock()
+		log.Printf("[%s] closed. message counts:\n%s", s.streamID, s.rec.summary())
+		s.rec.close()
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -502,6 +512,9 @@ func (sv *server) webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+	if fl, ok := w.(http.Flusher); ok {
+		fl.Flush()
+	}
 	log.Printf("webhook: %s %s", hook.Event, truncate(body, 1200))
 
 	meetingUUID, _ := hook.Payload["meeting_uuid"].(string)
@@ -523,14 +536,23 @@ func (sv *server) webhook(w http.ResponseWriter, r *http.Request) {
 			log.Printf("webhook: rtms_started missing fields; not connecting")
 			return
 		}
-		sv.start(meetingUUID, streamID, serverURL)
+		meetingID := fmt.Sprint(hook.Payload["meeting_id"])
+		if meetingID == "<nil>" || meetingID == "" {
+			meetingID = ""
+			log.Print("webhook: no meeting number; capturing by runtime UUID")
+		}
+		// json.Unmarshal represents numbers as float64; avoid exponent notation.
+		if n, ok := hook.Payload["meeting_id"].(float64); ok {
+			meetingID = strconv.FormatInt(int64(n), 10)
+		}
+		sv.start(meetingUUID, streamID, serverURL, meetingID)
 	case "meeting.rtms_stopped", "meeting.rtms_interrupted":
-		sv.cfg.bridge.stop(streamID)
 		sv.mu.Lock()
+		sv.cfg.bridge.stop(streamID, strings.TrimPrefix(hook.Event, "meeting.rtms_"))
 		s := sv.streams[streamID]
 		delete(sv.streams, streamID)
 		sv.mu.Unlock()
-		if s != nil && hook.Event == "meeting.rtms_stopped" {
+		if s != nil {
 			s.closeAll()
 		}
 	}
@@ -558,12 +580,12 @@ func (sv *server) verify(r *http.Request, body []byte) error {
 	return nil
 }
 
-func (sv *server) start(meetingUUID, streamID, serverURL string) {
+func (sv *server) start(meetingUUID, streamID, serverURL, meetingID string) {
 	sv.mu.Lock()
 	defer sv.mu.Unlock()
-	if _, ok := sv.streams[streamID]; ok {
-		log.Printf("[%s] already connected; ignoring duplicate rtms_started", streamID)
-		return
+	if old := sv.streams[streamID]; old != nil {
+		// Zoom server failover can reuse both IDs with fresh socket URLs.
+		old.closeAll()
 	}
 	rec, err := newRecorder(filepath.Join(sv.cfg.recDir, time.Now().UTC().Format("20060102-150405")+"-"+safe(streamID)))
 	if err != nil {
@@ -575,8 +597,21 @@ func (sv *server) start(meetingUUID, streamID, serverURL string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &stream{cfg: sv.cfg, meetingUUID: meetingUUID, streamID: streamID, rec: rec, ctx: ctx, cancel: cancel, media: map[string]*websocket.Conn{}}
 	sv.streams[streamID] = s
-	sv.cfg.bridge.start(streamID)
-	go s.runSignaling(serverURL)
+	s.onExit = func() {
+		sv.mu.Lock()
+		defer sv.mu.Unlock()
+		if sv.streams[streamID] == s {
+			delete(sv.streams, streamID)
+			sv.cfg.bridge.stop(streamID, "interrupted")
+		}
+	}
+	go func() {
+		// Attachment retries must not hold Zoom's webhook response open.
+		sv.cfg.bridge.start(streamID, meetingID, meetingUUID)
+		if s.ctx.Err() == nil {
+			s.runSignaling(serverURL)
+		}
+	}()
 }
 
 func safe(s string) string {

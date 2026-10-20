@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,11 +19,32 @@ import (
 )
 
 type liveBridge struct {
-	mu        sync.Mutex
-	base, key string
-	client    *http.Client
-	calls     map[string]string
-	closed    map[string]bool
+	mu                      sync.Mutex
+	base, key               string
+	client                  *http.Client
+	streams                 map[string]*bridgeStream
+	retryWindow, retryDelay time.Duration
+}
+type bridgeStream struct {
+	mu         sync.Mutex
+	callID     string
+	closed     bool
+	paused     bool
+	identity   zoomIdentity
+	identified bool
+	standalone bool
+}
+
+func (b *liveBridge) state(id string) *bridgeStream {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.streams == nil {
+		b.streams = map[string]*bridgeStream{}
+	}
+	if b.streams[id] == nil {
+		b.streams[id] = &bridgeStream{}
+	}
+	return b.streams[id]
 }
 
 func bridgeFromEnv() *liveBridge {
@@ -38,7 +60,7 @@ func bridgeFromEnv() *liveBridge {
 	if u.Scheme != "http" || (u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback())) {
 		log.Fatal("demo bridge must target a loopback HTTP address")
 	}
-	return &liveBridge{base: strings.TrimRight(base, "/"), key: key, client: &http.Client{Timeout: 5 * time.Second}, calls: map[string]string{}, closed: map[string]bool{}}
+	return &liveBridge{base: strings.TrimRight(base, "/"), key: key, client: &http.Client{Timeout: 5 * time.Second}, streams: map[string]*bridgeStream{}}
 }
 
 func (b *liveBridge) post(path string, body any, out any) error {
@@ -59,7 +81,7 @@ func (b *liveBridge) post(path string, body any, out any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		io.Copy(io.Discard, resp.Body)
-		return fmt.Errorf("web app returned %s", resp.Status)
+		return bridgeHTTPError{resp.StatusCode}
 	}
 	if out != nil {
 		return json.NewDecoder(resp.Body).Decode(out)
@@ -68,32 +90,97 @@ func (b *liveBridge) post(path string, body any, out any) error {
 	return nil
 }
 
-func (b *liveBridge) call(streamID string) (string, error) {
-	if id := b.calls[streamID]; id != "" {
-		return id, nil
+type bridgeHTTPError struct{ Status int }
+
+func (e bridgeHTTPError) Error() string { return fmt.Sprintf("web app returned HTTP %d", e.Status) }
+
+type zoomIdentity struct {
+	MeetingID   string `json:"meeting_id"`
+	MeetingUUID string `json:"meeting_uuid"`
+	StreamID    string `json:"rtms_stream_id"`
+}
+
+// Each stream serializes its own attachment and text, so a temporary app
+// failure holds that stream's opening frames without stalling other meetings.
+func (b *liveBridge) call(streamID string, s *bridgeStream) (string, error) {
+	if s.callID != "" {
+		return s.callID, nil
 	}
 	var result struct {
-		ID string `json:"id"`
+		ID           string `json:"id"`
+		Status       string `json:"status"`
+		StreamStatus string `json:"stream_status"`
 	}
-	err := b.post("/api/demo/calls", map[string]any{"topic": "Live Zoom meeting · " + time.Now().Format("3:04 PM"), "source": "zoom"}, &result)
-	if err != nil {
-		return "", err
+	if s.identified && !s.standalone {
+		window, delay := b.retryWindow, b.retryDelay
+		if window == 0 {
+			window = 30 * time.Second
+		}
+		if delay == 0 {
+			delay = time.Second
+		}
+		deadline := time.Now().Add(window)
+		for {
+			err := b.post("/api/rtms/streams", s.identity, &result)
+			if err == nil {
+				if result.Status != "live" || (result.StreamStatus != "" && result.StreamStatus != "live") {
+					s.closed = true
+					return "", fmt.Errorf("Zoom session already ended")
+				}
+				break
+			}
+			var status bridgeHTTPError
+			permanent := errors.As(err, &status) && status.Status >= 400 && status.Status < 500
+			if permanent || !time.Now().Before(deadline) {
+				s.standalone = true
+				// A timed-out response may have committed an attachment. Retire that
+				// mapping as well, even though capture continues in the fallback call.
+				if !permanent {
+					if stopErr := b.post("/api/rtms/streams/"+url.PathEscape(streamID)+"/stop", map[string]string{"status": "stopped"}, nil); stopErr != nil {
+						log.Printf("ERROR stream %s: could not retire scheduled attachment: %v", streamID, stopErr)
+					}
+				}
+				log.Printf("ERROR stream %s: scheduled attachment unavailable (%v); capturing a standalone call", streamID, err)
+				break
+			}
+			wait := min(delay, time.Until(deadline))
+			time.Sleep(wait)
+			delay = min(delay*2, 5*time.Second)
+		}
+	}
+	if !s.identified || s.standalone {
+		result.ID = ""
+		if err := b.post("/api/demo/calls", map[string]any{"topic": "Live Zoom meeting · " + time.Now().Format("3:04 PM"), "source": "zoom"}, &result); err != nil {
+			return "", err
+		}
 	}
 	if result.ID == "" {
 		return "", fmt.Errorf("web app returned no call")
 	}
-	b.calls[streamID] = result.ID
+	s.callID = result.ID
 	log.Printf("live Zoom call: %s/calls/%s", b.base, result.ID)
 	return result.ID, nil
 }
 
-func (b *liveBridge) start(streamID string) {
+func (b *liveBridge) start(streamID string, identity ...string) {
 	if b == nil {
 		return
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if _, err := b.call(streamID); err != nil {
+	s := b.state(streamID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(identity) == 2 {
+		s.identity = zoomIdentity{MeetingID: identity[0], MeetingUUID: identity[1], StreamID: streamID}
+		s.identified = true
+	}
+	if s.closed {
+		return
+	}
+	if s.paused {
+		s.callID = ""
+		s.paused = false
+	}
+	if _, err := b.call(streamID, s); err != nil {
 		log.Printf("live bridge start: %v", err)
 	}
 }
@@ -102,12 +189,13 @@ func (b *liveBridge) text(streamID, kind string, content map[string]any) {
 	if b == nil {
 		return
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.closed[streamID] {
+	s := b.state(streamID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
 		return
 	}
-	id, err := b.call(streamID)
+	id, err := b.call(streamID, s)
 	if err != nil {
 		log.Printf("live bridge call: %v", err)
 		return
@@ -128,20 +216,30 @@ func (b *liveBridge) text(streamID, kind string, content map[string]any) {
 	}
 }
 
-func (b *liveBridge) stop(streamID string) {
+func (b *liveBridge) stop(streamID string, status ...string) {
 	if b == nil {
 		return
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.closed[streamID] {
+	s := b.state(streamID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
 		return
 	}
-	if id := b.calls[streamID]; id != "" {
+	if len(status) > 0 && !s.standalone {
+		if err := b.post("/api/rtms/streams/"+url.PathEscape(streamID)+"/stop", map[string]string{"status": status[0]}, nil); err != nil {
+			log.Printf("live bridge stop: %v", err)
+			return
+		}
+	} else if id := s.callID; id != "" {
 		if err := b.post("/api/demo/calls/"+id+"/stop", map[string]string{}, nil); err != nil {
 			log.Printf("live bridge stop: %v", err)
 			return
 		}
 	}
-	b.closed[streamID] = true
+	if len(status) > 0 && status[0] == "interrupted" && !s.standalone {
+		s.paused = true
+	} else {
+		s.closed = true
+	}
 }

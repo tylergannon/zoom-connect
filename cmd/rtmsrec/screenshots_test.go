@@ -22,12 +22,12 @@ func TestScreenBridgeUploadsBytesAndMetadata(t *testing.T) {
 		w.WriteHeader(201)
 	}))
 	defer srv.Close()
-	b := &liveBridge{mu: sync.Mutex{}, base: srv.URL, key: "test-key", client: srv.Client(), calls: map[string]string{"stream-one": "call-one"}, closed: map[string]bool{}}
+	b := &liveBridge{mu: sync.Mutex{}, base: srv.URL, key: "test-key", client: srv.Client(), streams: map[string]*bridgeStream{"stream-one": {callID: "call-one"}}}
 	b.screen("stream-one", map[string]any{"data": base64.StdEncoding.EncodeToString(image), "timestamp": float64(1792184000123)})
 	if count != 1 {
 		t.Fatal("no upload")
 	}
-	b.closed["stream-one"] = true
+	b.state("stream-one").closed = true
 	b.screen("stream-one", map[string]any{"data": base64.StdEncoding.EncodeToString(image)})
 	if count != 1 {
 		t.Fatal("late frame uploaded after stop")

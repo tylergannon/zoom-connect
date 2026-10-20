@@ -93,3 +93,67 @@ Google Workspace OAuth is still pending. Keep all credentials in the
 Hosted Postgres uses a verified TLS URL. Set `DATABASE_CA_CERT` to its PEM
 root certificate when the provider uses its own CA. The application adds that
 CA to its database TLS trust pool without changing system-wide trust.
+
+## Add a scheduled call
+
+As an admin, choose **Add scheduled call** on the Calls page and paste an existing Zoom
+invitation or `/j/…` meeting link. Title and expected start time are optional.
+This registers the **next live session on that link**, not a recurring schedule.
+The invitation and embedded passcode are discarded after extracting the meeting
+number. Registration grants the admin an explicit share for this call; the admin can
+share or cancel it without being marked as a participant. Ordinary users can
+connect before start when shared in, but cannot claim meeting invitations.
+Owner/host fields never grant read access by themselves.
+
+Clients connect only to Zoom Connect. The call page provides a stable URL:
+
+```sh
+curl -N -H "Authorization: Bearer $ZC_KEY" \
+  https://YOUR_APP/api/calls/CALL_ID/stream
+```
+
+The authenticated SSE connection stays open while the call is scheduled, then
+receives lifecycle, transcript, chat and screen events as the app receives them.
+Expected start time is advisory; a late meeting keeps waiting. Reconnect with
+`Last-Event-ID` to resume after the last event received. That header takes
+precedence over an initial `?from=` cursor. Cancellation emits `call.cancelled`
+and ends the stream. Access and API-key revocations also disconnect clients.
+
+Admin API keys may register calls with `POST /api/calls` (or `/api/v1/calls`):
+
+```json
+{
+  "invitation": "https://us02web.zoom.us/j/12345678901?pwd=…",
+  "topic": "Planning",
+  "scheduled_at": "2026-10-20T15:00:00Z"
+}
+```
+
+The returned `id` works immediately with metadata, sharing and streaming APIs.
+A pending call has `status: "scheduled"` and `started: null`. The optional
+`scheduled_at` is an RFC3339 timestamp. The creator can cancel it with
+`POST /api/calls/{id}/cancel`. Only one pending registration may use a meeting number at a time;
+a live call does not block registering the next session. The recorder durably attaches the runtime meeting UUID and
+stream IDs to the registered call; duplicate notifications and recorder restarts
+do not create a second call. Concurrent streams remain separate, and the call
+ends when its last stream stops. Temporary interruptions emit `stream.paused`
+and keep clients connected for up to two minutes. A resumed start can reuse an
+interrupted stream ID; final stopped IDs stay closed. The recorder currently
+requires a new Zoom start notification to resume; it does not automatically
+reconnect a dropped signaling socket. A fresh stream for that same runtime UUID
+can reopen the call at the same URL; a new meeting UUID instead starts a new
+session and interrupts any stale live predecessor. Delayed streams from a
+superseded UUID cannot interrupt the current session. A missing meeting
+number still captures by UUID but cannot match a pending registration.
+If scheduled attachment returns a client error, or server/network errors
+persist for thirty seconds of retries with backoff, capture falls back to a standalone call. That
+fallback preserves capture but does not deliver into the waiting call; the recorder
+logs its destination URL. If a session resumes after an `end` event, reconnect to
+the same URL with `Last-Event-ID`.
+
+Saving a link prepares the app's downstream subscription. Upstream capture still
+requires Zoom Connect's RTMS app user to start streaming or join with auto-start
+enabled, subject to Zoom host settings. This does not schedule a participant bot
+or provide unattended joining. Local integration proof uses simulated incoming
+Zoom data; live opening-transcript capture for scheduled calls still needs a
+real meeting test.

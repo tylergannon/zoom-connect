@@ -1,7 +1,8 @@
 export type User = { id: string; email: string; name: string; is_admin: boolean };
 export type Person = { id: string; name: string; email?: string };
 export type Call = {
-	id: string; topic: string; status: 'live' | 'stopped' | 'interrupted'; started: string;
+	id: string; topic: string; status: 'scheduled' | 'live' | 'stopped' | 'interrupted' | 'cancelled'; started: string | null;
+	scheduled_at?: string; zoom_meeting_id?: string; is_owner: boolean;
 	ended?: string; host: Person; participants: Person[]; last_seq: number;
 	shared_by?: string; is_participant: boolean; can_share: boolean;
 	latest_event?: EventItem;

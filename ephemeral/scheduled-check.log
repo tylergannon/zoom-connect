@@ -1,0 +1,10 @@
+$ svelte-kit sync ⊘ cache disabled
+
+$ svelte-check --tsconfig ./tsconfig.json ⊘ cache disabled
+Loading svelte-check in workspace: /Users/tyler/.codex/worktrees/f4c2/zoom-connect/web
+Getting Svelte diagnostics...
+
+svelte-check found 0 errors and 0 warnings
+
+---
+vp run: 0/2 cache hit (0%). (Run `vp run --last-details` for full details)

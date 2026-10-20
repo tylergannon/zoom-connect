@@ -1,0 +1,14 @@
+: connected
+
+id: 1
+event: call.scheduled
+data: {"seq":1,"ts":1792458472680,"recv":1792458472680,"kind":"call.scheduled","data":{"scheduled_at":null}}
+
+: keepalive
+
+id: 2
+event: call.cancelled
+data: {"seq":2,"ts":1792458477065,"recv":1792458477065,"kind":"call.cancelled","data":{}}
+
+event: end
+data: {}

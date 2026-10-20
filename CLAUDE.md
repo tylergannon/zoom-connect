@@ -23,8 +23,8 @@ Slack and audio/video capture in the web app remain deferred.
   reading or changing it.
 - `docs/requirements.md` — the product surface: user-facing claims, technical
   requirements, MVP line, open questions, and the nlspec amendments the
-  product requires. Where they conflict, requirements.md is newer; fold the
-  change into nlspec before building on it.
+  product requires. The dated prototype amendments in nlspec supersede this older draft;
+  otherwise fold product changes into nlspec before building on them.
 - `spike/README.md` — the RTMS recorder spike and what its recording must
   answer.
 
@@ -65,11 +65,13 @@ deferred. Do not build deferred items without being asked.
 
 ## Rules
 
-- Call IDs are ULIDs assigned when the webhook arrives; URLs use them, never
-  Zoom's meeting UUID.
+- Call IDs are ULIDs assigned at scheduled registration or live ingestion;
+  URLs use them, never Zoom's meeting UUID.
 - Access: a principal sees a call only if they were a participant or hold a
   share. An API key acts as its owner. Check this at every route, including
-  SSE and downloads.
+  SSE and downloads. Admins may register a pending call and receive an explicit
+  share, then share that call before attendance. Owner/host fields alone do
+  not grant access. See the October 19 nlspec amendment.
 - Sign-in requires a verified email and `hd == ALLOWED_DOMAIN` from the ID
   token; never trust the `hd` login hint.
 - Secrets (API keys, Zoom credentials) are stored hashed or encrypted and

@@ -1,0 +1,43 @@
+{
+  "origin": "https://zoom-connect-tpg-demo.fly.dev",
+  "callID": "01M5BDKQBJNK2V8FD0ENTBX6J0",
+  "meetingID": "89180298510",
+  "clientConnectedBeforeStart": true,
+  "initialStatus": "scheduled",
+  "events": [
+    {
+      "kind": "call.scheduled",
+      "seq": 1,
+      "receivedAt": "2026-10-20T01:08:01.383347+00:00"
+    },
+    {
+      "kind": "stream.started",
+      "seq": 2,
+      "receivedAt": "2026-10-20T01:08:19.408444+00:00"
+    },
+    {
+      "kind": "chat",
+      "seq": 3,
+      "receivedAt": "2026-10-20T01:10:52.502880+00:00"
+    },
+    {
+      "kind": "stream.paused",
+      "seq": 4,
+      "receivedAt": "2026-10-20T01:22:40.048575+00:00"
+    },
+    {
+      "kind": "stream.stopped",
+      "seq": 5,
+      "receivedAt": "2026-10-20T01:22:40.102857+00:00"
+    },
+    {
+      "kind": "end",
+      "seq": null,
+      "receivedAt": "2026-10-20T01:22:40.103364+00:00"
+    }
+  ],
+  "realZoom": true,
+  "clientConnectedAt": "2026-10-20T01:08:01.380289+00:00",
+  "liveTransition": true,
+  "ended": true
+}

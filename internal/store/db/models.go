@@ -20,14 +20,18 @@ type ApiKey struct {
 }
 
 type Call struct {
-	ID         string             `json:"id"`
-	Topic      string             `json:"topic"`
-	Status     string             `json:"status"`
-	Started    pgtype.Timestamptz `json:"started"`
-	Ended      pgtype.Timestamptz `json:"ended"`
-	HostUserID string             `json:"host_user_id"`
-	LastSeq    int64              `json:"last_seq"`
-	EventPath  string             `json:"event_path"`
+	ID               string             `json:"id"`
+	Topic            string             `json:"topic"`
+	Status           string             `json:"status"`
+	Started          pgtype.Timestamptz `json:"started"`
+	Ended            pgtype.Timestamptz `json:"ended"`
+	HostUserID       string             `json:"host_user_id"`
+	LastSeq          int64              `json:"last_seq"`
+	EventPath        string             `json:"event_path"`
+	ScheduledAt      pgtype.Timestamptz `json:"scheduled_at"`
+	ZoomMeetingID    pgtype.Text        `json:"zoom_meeting_id"`
+	ZoomMeetingUuid  pgtype.Text        `json:"zoom_meeting_uuid"`
+	SupersededByUuid pgtype.Text        `json:"superseded_by_uuid"`
 }
 
 type CallEvent struct {
@@ -46,6 +50,12 @@ type CallParticipant struct {
 	UserID        pgtype.Text `json:"user_id"`
 	Name          string      `json:"name"`
 	Email         pgtype.Text `json:"email"`
+}
+
+type RtmsStream struct {
+	StreamID string      `json:"stream_id"`
+	CallID   pgtype.Text `json:"call_id"`
+	Status   string      `json:"status"`
 }
 
 type Session struct {

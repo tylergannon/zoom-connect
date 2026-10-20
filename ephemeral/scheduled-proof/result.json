@@ -1,0 +1,17 @@
+{
+  "origin": "http://127.0.0.1:8094",
+  "callID": "01M5BCXBAK36ABA7Q6ECGMGDBY",
+  "meetingID": "82457747605",
+  "proof": "Local production binary with simulated incoming Zoom data; API-key client subscribed before start and received opening words on the same connection",
+  "events": [
+    "event: call.scheduled",
+    "event: stream.started",
+    "event: transcript",
+    "event: stream.stopped",
+    "event: end"
+  ],
+  "replayAfter": 2,
+  "mobileOverflow": false,
+  "browserErrors": [],
+  "cancellation": "UI client received cancellation and ended"
+}
