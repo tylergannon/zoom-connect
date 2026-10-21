@@ -1,0 +1,14 @@
+/.env
+/recordings/
+/rtmsrec
+/data/
+/data-live/
+/ephemeral/bin/
+/bin/
+/web/build/
+/web/.svelte-kit/
+/web/node_modules/
+.claude/worktrees/
+
+# Local private recovery material.
+/handoff/
