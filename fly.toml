@@ -1,0 +1,30 @@
+app = 'zoom-connect-tpg-demo'
+primary_region = 'iad'
+kill_signal = 'SIGTERM'
+kill_timeout = '15s'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  RTMS_RECORDER_URL = 'http://127.0.0.1:8081'
+  REC_DIR = '/app/recordings'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = '30s'
+    interval = '30s'
+    method = 'GET'
+    timeout = '5s'
+    path = '/healthz'
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

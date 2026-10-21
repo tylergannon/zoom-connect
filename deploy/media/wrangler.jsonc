@@ -1,0 +1,7 @@
+{
+  "name": "zoom-connect-demo-media",
+  "main": "worker.js",
+  "account_id": "1cc1a42708182215a013a2e6b31ad6a0",
+  "compatibility_date": "2026-10-16",
+  "r2_buckets": [{"binding":"IMAGES", "bucket_name":"zoom-connect-demo-media"}]
+}
