@@ -21,13 +21,16 @@
 	import CallStatus from '#lib/components/CallStatus.svelte';
 	import CopyButton from '#lib/components/CopyButton.svelte';
 	import CallAside from './CallAside.svelte';
+	import CallPages from './CallPages.svelte';
 	import ScreenShare from './ScreenShare.svelte';
 	import SharingDialog from './SharingDialog.svelte';
 	import Transcript from './Transcript.svelte';
 	import { api, APIError, dayLabel, errorMessage, minutes, timeOfDay, when } from '#lib/api';
 	import type { Call, EventItem, Person, Share } from '#lib/types';
 
-	let { callId: id }: { callId: string } = $props();
+	// The call layout keys this component on the call id, so each call gets a
+	// fresh instance; `artifactId` changes in place when a page is selected.
+	let { callId: id, artifactId = '' }: { callId: string; artifactId?: string } = $props();
 
 	let view = $state<'loading' | 'ready' | 'no-access' | 'missing' | 'error'>('loading');
 	let call = $state<Call | null>(null);
@@ -43,6 +46,8 @@
 	let source: EventSource | null = null;
 	let checkingAccess = false;
 	let participantTimer: ReturnType<typeof setTimeout> | undefined;
+	// Requests started before the view unmounted must not open a stream after it.
+	let closed = false;
 
 	const path = (suffix = '') => `/api/calls/${encodeURIComponent(id)}${suffix}`;
 	const chatCount = $derived(events.filter((e) => e.kind === 'chat').length);
@@ -59,6 +64,7 @@
 		void load();
 		const timer = setInterval(() => (now = Date.now()), 30_000);
 		return () => {
+			closed = true;
 			clearInterval(timer);
 			clearTimeout(participantTimer);
 			source?.close();
@@ -69,13 +75,16 @@
 		view = 'loading';
 		error = '';
 		try {
-			call = await api<Call>(path());
-			events = await api<EventItem[]>(path('/events?from=0'));
+			const loaded = await api<Call>(path());
+			const saved = await api<EventItem[]>(path('/events?from=0'));
+			if (closed) return;
+			call = loaded;
+			events = saved;
 			view = 'ready';
 			void loadShares();
 			connect(events.reduce((max, e) => Math.max(max, e.seq), 0));
 		} catch (e) {
-			fail(e);
+			if (!closed) fail(e);
 		}
 	}
 
@@ -110,6 +119,7 @@
 	}
 
 	function connect(from: number) {
+		if (closed) return;
 		if (call?.status !== 'live' && call?.status !== 'scheduled') return;
 		source?.close();
 		connection = 'connecting';
@@ -308,6 +318,8 @@
 			</div>
 		</header>
 		<p class="sr-only" role="status">{announcement}</p>
+
+		<CallPages {call} selectedId={artifactId} {now} />
 
 		<div class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
 			{#if call.status === 'scheduled'}
