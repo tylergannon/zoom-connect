@@ -233,3 +233,54 @@ func TestInterruptedStreamKeepsClientAndExpiresDurably(t *testing.T) {
 		t.Fatalf("closed ID reopened: %+v", closed)
 	}
 }
+
+// A signaling exit can be reported before the stream was ever attached to a
+// call, and Zoom's stop can follow it. Both deliveries must be acknowledged and
+// leave the stream closed without claiming the pending registration.
+func TestStopBeforeAttachTombstoneAcceptsInterruptedThenStopped(t *testing.T) {
+	t.Setenv("DATABASE_URL", testDatabase(t))
+	t.Setenv("AUTH_MODE", "")
+	t.Setenv("RTMS_RECORDER_URL", "")
+	h, err := New(http.NotFoundHandler())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	login := request(t, srv.Client(), "POST", srv.URL+"/api/demo/login", nil, strings.NewReader(`{"email":"dana@acme.co"}`))
+	var cookie *http.Cookie
+	for _, c := range login.Cookies() {
+		if c.Name == "zc_session" {
+			cookie = c
+		}
+	}
+	login.Body.Close()
+	post := func(path, body string, status int) []byte {
+		t.Helper()
+		resp := request(t, srv.Client(), "POST", srv.URL+path, cookie, strings.NewReader(body))
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != status {
+			t.Fatalf("POST %s: %s %s", path, resp.Status, raw)
+		}
+		return raw
+	}
+	var pending Call
+	json.Unmarshal(post("/api/calls", `{"invitation":"https://zoom.us/j/44455566677"}`, 201), &pending)
+	post("/api/rtms/streams/never-attached/stop", `{"status":"interrupted"}`, 200)
+	post("/api/rtms/streams/never-attached/stop", `{"status":"stopped"}`, 200)
+	var closed struct {
+		Status string `json:"status"`
+	}
+	json.Unmarshal(post("/api/rtms/streams", `{"meeting_id":"44455566677","meeting_uuid":"late-start","rtms_stream_id":"never-attached"}`, 200), &closed)
+	if closed.Status != "stopped" {
+		t.Fatalf("closed stream attached: %+v", closed)
+	}
+	resp := request(t, srv.Client(), "GET", srv.URL+"/api/calls/"+pending.ID, cookie, nil)
+	var still Call
+	json.NewDecoder(resp.Body).Decode(&still)
+	resp.Body.Close()
+	if still.Status != "scheduled" {
+		t.Fatalf("tombstoned stream claimed the pending call: %+v", still)
+	}
+}
