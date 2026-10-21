@@ -159,6 +159,10 @@
 	body {
 		@apply bg-background font-sans text-foreground antialiased;
 	}
+	/* A call page being presented covers the window; the page behind stays put. */
+	body.artifact-presenting {
+		overflow: hidden;
+	}
 	::selection {
 		background: var(--selection);
 		color: var(--selection-foreground);

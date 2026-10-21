@@ -24,6 +24,10 @@
 	const announcements = $derived(`curl -N -H "Authorization: Bearer $ZC_KEY" \\\n  ${origin}/api/v1/stream`);
 	const follow = $derived(`curl -N -H "Authorization: Bearer $ZC_KEY" \\\n  ${origin}/api/v1/calls/CALL_ID/stream`);
 	const download = $derived(`curl -H "Authorization: Bearer $ZC_KEY" \\\n  "${origin}/api/v1/calls/CALL_ID/transcript?format=json"`);
+	const pages = $derived(`${origin}/api/v1/calls/CALL_ID/artifacts`);
+	const createPage = $derived(`curl -H "Authorization: Bearer $ZC_KEY" -H "Content-Type: application/json" \\\n  -d '{"title":"Live agenda","html":"<h1>Agenda</h1><ol><li>Pricing</li></ol>"}' \\\n  ${pages}`);
+	const updatePage = $derived(`curl -X PUT -H "Authorization: Bearer $ZC_KEY" -H "Content-Type: application/json" \\\n  -d '{"base_version":1,"html":"<h1>Agenda</h1><ol><li><s>Pricing</s></li><li>Launch</li></ol>"}' \\\n  ${pages}/PAGE_ID`);
+	const pageHistory = $derived(`curl -H "Authorization: Bearer $ZC_KEY" ${pages}/PAGE_ID/versions\ncurl -H "Authorization: Bearer $ZC_KEY" ${pages}/PAGE_ID/versions/1`);
 
 	const exampleAnnouncements = `event: call.started
 data: {"id":"01JB8Z4M2Q7T","topic":"Weekly product sync","status":"live"}
@@ -35,11 +39,17 @@ data: {"id":"01JB5V1N8C3E","topic":"Q3 pricing","shared_by":"Marcus Reyes"}`;
 event: transcript
 data: {"seq":42,"participant":{"name":"Priya Shah"},"data":{"text":"Let’s ship it Monday.","lang":"en"}}`;
 
+	const examplePage = `{"id":"PAGE_ID","call_id":"CALL_ID","title":"Live agenda","version":1,
+ "viewer_url":"/calls/CALL_ID/artifacts/PAGE_ID", …}`;
+
+	const exampleConflict = `409 {"error":"version conflict","current_version":3,"base_version":1}`;
+
 	const sections = [
 		{ id: 'key', title: 'Give your agent a key' },
 		{ id: 'every-call', title: 'Hear about every call' },
 		{ id: 'follow', title: 'Follow one call live' },
 		{ id: 'download', title: 'Download a finished call' },
+		{ id: 'pages', title: 'Publish a live page' },
 		{ id: 'reference', title: 'Reference' }
 	];
 
@@ -50,6 +60,13 @@ data: {"seq":42,"participant":{"name":"Priya Shah"},"data":{"text":"Let’s ship
 		['GET', '/api/v1/calls/{id}/stream', 'Saved events, then live ones (SSE)'],
 		['GET', '/api/v1/calls/{id}/transcript?format=', 'Transcript as txt, vtt or json'],
 		['GET', '/api/v1/stream', 'Call announcements (SSE)'],
+		['GET', '/api/v1/calls/{id}/artifacts', 'The call’s pages, without their HTML'],
+		['POST', '/api/v1/calls/{id}/artifacts', 'Publish a page: title and HTML'],
+		['GET', '/api/v1/calls/{id}/artifacts/{page}', 'A page’s latest version, with its HTML'],
+		['PUT', '/api/v1/calls/{id}/artifacts/{page}', 'A new version: base_version, HTML, and optionally title'],
+		['GET', '/api/v1/calls/{id}/artifacts/{page}/versions', 'Every version, newest first, 50 at a time (?before=, ?limit=)'],
+		['GET', '/api/v1/calls/{id}/artifacts/{page}/versions/{n}', 'One stored version, with its HTML'],
+		['GET', '/api/v1/calls/{id}/artifacts/{page}/stream', 'The latest version now and after each update (SSE)'],
 		['POST', '/api/v1/calls', 'Admins only: add a scheduled call from a Zoom invitation']
 	];
 
@@ -67,6 +84,13 @@ data: {"seq":42,"participant":{"name":"Priya Shah"},"data":{"text":"Let’s ship
 		['401', 'The key is missing, wrong, or revoked'],
 		['403', 'The key’s owner can’t see this call'],
 		['404', 'There’s no call with that ID']
+	];
+
+	const pageErrors = [
+		['400', 'Bad JSON, an unknown field, an empty or over-long title, or a missing base_version'],
+		['403', 'The key’s owner wasn’t on the call. People it was shared with can read pages but not publish them'],
+		['409', 'Someone else updated the page first, the call has ended, or it already has 10 pages'],
+		['413', 'The HTML is over 256 KiB']
 	];
 </script>
 
@@ -161,11 +185,32 @@ data: {"seq":42,"participant":{"name":"Priya Shah"},"data":{"text":"Let’s ship
 				{@render code(download, 'download command')}
 			</section>
 
+			<section aria-labelledby="pages" class="flex max-w-3xl flex-col gap-4">
+				{@render step(5, 'pages', 'Publish a live page')}
+				<p class="max-w-prose">
+					While a call is scheduled or live, an agent can publish an HTML page for it, such as an agenda, a decision log or a board, and keep updating it. Everyone who can see the call finds it under Pages on the call, watches each update arrive, and can present it to share in Zoom. Pages are static HTML and CSS: scripts, forms and outside links to images or fonts don’t run or load, so put images in as <code class="rounded bg-muted px-1 font-mono text-sm">data:</code> URLs.
+				</p>
+				{@render code(createPage, 'create page command')}
+				{@render example(examplePage, 'Example reply')}
+				<h3 class="mt-2 text-base font-semibold">Update it</h3>
+				<p class="max-w-prose">
+					Send the version you’re replacing as <code class="rounded bg-muted px-1 font-mono text-sm">base_version</code>. The page keeps its ID and link, and every version is kept. If another update got there first, nothing is saved; read the page again and retry.
+				</p>
+				{@render code(updatePage, 'update page command')}
+				{@render example(exampleConflict, 'If someone else updated it first')}
+				<h3 class="mt-2 text-base font-semibold">Read its history</h3>
+				<p class="max-w-prose">
+					The versions list is newest first, 50 at a time. Pass its <code class="rounded bg-muted px-1 font-mono text-sm">next_before</code> as <code class="rounded bg-muted px-1 font-mono text-sm">?before=</code> for the next older page; it’s <code class="rounded bg-muted px-1 font-mono text-sm">null</code> at the first version.
+				</p>
+				{@render code(pageHistory, 'history commands')}
+			</section>
+
 			<section aria-labelledby="reference" class="flex max-w-3xl flex-col gap-6">
 				<h2 id="reference" class="scroll-mt-6 text-xl font-semibold tracking-tight">Reference</h2>
 				{@render table('Endpoints', ['Request', 'Returns'], endpoints.map(([m, p, d]) => [`${m} ${p}`, d]))}
 				{@render table('Events on a call stream', ['Event', 'Meaning'], streamEvents)}
 				{@render table('Errors', ['Status', 'What it means'], errors)}
+				{@render table('More errors when publishing pages', ['Status', 'What it means'], pageErrors)}
 			</section>
 		</div>
 	</div>

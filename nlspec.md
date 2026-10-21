@@ -4,6 +4,39 @@ Status: draft v0.2, 2026-10-15. Sole authority for intent; the code is the
 authority for fact. Amend only through spec-defect escalation or by elevating
 demonstrated test cases into claims.
 
+## Live call pages amendment — October 20, 2026
+
+Proposed for Tyler's review with the live-pages integration branch. Tyler
+approved the live call page prototype: an agent publishes an HTML page for a
+call and keeps updating it, and people who can see the call watch it change
+and can present it in a Zoom screen share. `docs/live-artifacts-contract.md`
+holds the exact endpoints and formats; this amendment fixes the intent.
+
+A page belongs to one call and keeps one stable ID and viewer URL for its
+lifetime. Each create or update stores an immutable version; every version is
+kept, and history is listed newest first in bounded pages with a cursor.
+Writes name the version they replace and fail without storing anything if
+another write got there first. Only participants and their API keys may
+write, and only while the call is scheduled or live; people the call is
+shared with may read. The existing sessions, API keys and participant-or-share
+ACL apply at every route, including the page stream, which rechecks access
+before each delivery and while idle so revocation closes it within seconds.
+No new credential, scope or public link exists.
+
+Page HTML is untrusted. It is never served as a document on the app origin;
+the call view renders it in an opaque, capability-free sandbox under a
+static content policy, so pages are static HTML and CSS. The call view lists
+a call's pages, selects one in place from its viewer URL, shows its history,
+and presents it full screen with app-owned status and exit controls.
+
+Behavioral claims: real handler/database tests demonstrate the ACL, version
+conflicts, bounds, complete paginated history across restarts, and stream
+revocation; headless browsers demonstrate the sandbox, live updates,
+selection, history, Present and reconnect. Excluded for now: restoring or
+deleting versions, a version cap or retention policy, rate limits, scripted
+pages, and publishing after a call ends. Storage per page grows with every
+update until a retention policy is decided.
+
 ## Scheduled client subscriptions amendment — October 19, 2026
 
 Tyler requested that an existing Zoom invitation can be added to the app so

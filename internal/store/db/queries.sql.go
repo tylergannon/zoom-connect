@@ -34,6 +34,23 @@ func (q *Queries) AddParticipant(ctx context.Context, arg AddParticipantParams) 
 	return err
 }
 
+const advanceCallArtifact = `-- name: AdvanceCallArtifact :one
+UPDATE call_artifacts SET version=version+1 WHERE id=$1 AND call_id=$2 AND version=$3 RETURNING version
+`
+
+type AdvanceCallArtifactParams struct {
+	ID      string `json:"id"`
+	CallID  string `json:"call_id"`
+	Version int64  `json:"version"`
+}
+
+func (q *Queries) AdvanceCallArtifact(ctx context.Context, arg AdvanceCallArtifactParams) (int64, error) {
+	row := q.db.QueryRow(ctx, advanceCallArtifact, arg.ID, arg.CallID, arg.Version)
+	var version int64
+	err := row.Scan(&version)
+	return version, err
+}
+
 const advanceEventSeq = `-- name: AdvanceEventSeq :exec
 UPDATE calls SET last_seq=GREATEST(last_seq,$2) WHERE id=$1
 `
@@ -46,6 +63,22 @@ type AdvanceEventSeqParams struct {
 func (q *Queries) AdvanceEventSeq(ctx context.Context, arg AdvanceEventSeqParams) error {
 	_, err := q.db.Exec(ctx, advanceEventSeq, arg.ID, arg.LastSeq)
 	return err
+}
+
+const callArtifactVersion = `-- name: CallArtifactVersion :one
+SELECT version FROM call_artifacts WHERE id=$1 AND call_id=$2
+`
+
+type CallArtifactVersionParams struct {
+	ID     string `json:"id"`
+	CallID string `json:"call_id"`
+}
+
+func (q *Queries) CallArtifactVersion(ctx context.Context, arg CallArtifactVersionParams) (int64, error) {
+	row := q.db.QueryRow(ctx, callArtifactVersion, arg.ID, arg.CallID)
+	var version int64
+	err := row.Scan(&version)
+	return version, err
 }
 
 const canAccessCall = `-- name: CanAccessCall :one
@@ -63,6 +96,17 @@ func (q *Queries) CanAccessCall(ctx context.Context, arg CanAccessCallParams) (p
 	var column_1 pgtype.Bool
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const countCallArtifacts = `-- name: CountCallArtifacts :one
+SELECT count(*) FROM call_artifacts WHERE call_id=$1
+`
+
+func (q *Queries) CountCallArtifacts(ctx context.Context, callID string) (int64, error) {
+	row := q.db.QueryRow(ctx, countCallArtifacts, callID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const countCalls = `-- name: CountCalls :one
@@ -102,6 +146,21 @@ func (q *Queries) CreateCall(ctx context.Context, arg CreateCallParams) error {
 		arg.LastSeq,
 		arg.EventPath,
 	)
+	return err
+}
+
+const createCallArtifact = `-- name: CreateCallArtifact :exec
+INSERT INTO call_artifacts(id,call_id,version,created_by) VALUES($1,$2,1,$3)
+`
+
+type CreateCallArtifactParams struct {
+	ID        string `json:"id"`
+	CallID    string `json:"call_id"`
+	CreatedBy string `json:"created_by"`
+}
+
+func (q *Queries) CreateCallArtifact(ctx context.Context, arg CreateCallArtifactParams) error {
+	_, err := q.db.Exec(ctx, createCallArtifact, arg.ID, arg.CallID, arg.CreatedBy)
 	return err
 }
 
@@ -231,6 +290,43 @@ func (q *Queries) FindKey(ctx context.Context, keyHash string) (ApiKey, error) {
 	return i, err
 }
 
+const getArtifactVersion = `-- name: GetArtifactVersion :one
+SELECT v.version,v.title,v.html,v.key_name,v.created_at,u.id AS author_id,u.name AS author_name
+FROM call_artifact_versions v JOIN call_artifacts a ON a.id=v.artifact_id JOIN users u ON u.id=v.author_id
+WHERE v.artifact_id=$1 AND a.call_id=$2 AND v.version=$3
+`
+
+type GetArtifactVersionParams struct {
+	ArtifactID string `json:"artifact_id"`
+	CallID     string `json:"call_id"`
+	Version    int64  `json:"version"`
+}
+
+type GetArtifactVersionRow struct {
+	Version    int64              `json:"version"`
+	Title      string             `json:"title"`
+	Html       string             `json:"html"`
+	KeyName    pgtype.Text        `json:"key_name"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	AuthorID   string             `json:"author_id"`
+	AuthorName string             `json:"author_name"`
+}
+
+func (q *Queries) GetArtifactVersion(ctx context.Context, arg GetArtifactVersionParams) (GetArtifactVersionRow, error) {
+	row := q.db.QueryRow(ctx, getArtifactVersion, arg.ArtifactID, arg.CallID, arg.Version)
+	var i GetArtifactVersionRow
+	err := row.Scan(
+		&i.Version,
+		&i.Title,
+		&i.Html,
+		&i.KeyName,
+		&i.CreatedAt,
+		&i.AuthorID,
+		&i.AuthorName,
+	)
+	return i, err
+}
+
 const getCall = `-- name: GetCall :one
 SELECT c.id,c.topic,c.status,c.started,c.ended,c.host_user_id,c.last_seq,c.event_path,c.scheduled_at,c.zoom_meeting_id,c.zoom_meeting_uuid,
        u.email AS host_email,u.name AS host_name
@@ -270,6 +366,55 @@ func (q *Queries) GetCall(ctx context.Context, id string) (GetCallRow, error) {
 		&i.ZoomMeetingUuid,
 		&i.HostEmail,
 		&i.HostName,
+	)
+	return i, err
+}
+
+const getCallArtifact = `-- name: GetCallArtifact :one
+SELECT a.id,a.call_id,a.version,a.created_at,cu.id AS created_by_id,cu.name AS created_by_name,
+       v.title,v.html,v.key_name,v.created_at AS updated_at,uu.id AS updated_by_id,uu.name AS updated_by_name
+FROM call_artifacts a
+JOIN call_artifact_versions v ON v.artifact_id=a.id AND v.version=a.version
+JOIN users cu ON cu.id=a.created_by JOIN users uu ON uu.id=v.author_id
+WHERE a.id=$1 AND a.call_id=$2
+`
+
+type GetCallArtifactParams struct {
+	ID     string `json:"id"`
+	CallID string `json:"call_id"`
+}
+
+type GetCallArtifactRow struct {
+	ID            string             `json:"id"`
+	CallID        string             `json:"call_id"`
+	Version       int64              `json:"version"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	CreatedByID   string             `json:"created_by_id"`
+	CreatedByName string             `json:"created_by_name"`
+	Title         string             `json:"title"`
+	Html          string             `json:"html"`
+	KeyName       pgtype.Text        `json:"key_name"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	UpdatedByID   string             `json:"updated_by_id"`
+	UpdatedByName string             `json:"updated_by_name"`
+}
+
+func (q *Queries) GetCallArtifact(ctx context.Context, arg GetCallArtifactParams) (GetCallArtifactRow, error) {
+	row := q.db.QueryRow(ctx, getCallArtifact, arg.ID, arg.CallID)
+	var i GetCallArtifactRow
+	err := row.Scan(
+		&i.ID,
+		&i.CallID,
+		&i.Version,
+		&i.CreatedAt,
+		&i.CreatedByID,
+		&i.CreatedByName,
+		&i.Title,
+		&i.Html,
+		&i.KeyName,
+		&i.UpdatedAt,
+		&i.UpdatedByID,
+		&i.UpdatedByName,
 	)
 	return i, err
 }
@@ -344,6 +489,31 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 	return i, err
 }
 
+const insertArtifactVersion = `-- name: InsertArtifactVersion :exec
+INSERT INTO call_artifact_versions(artifact_id,version,title,html,author_id,key_name) VALUES($1,$2,$3,$4,$5,$6)
+`
+
+type InsertArtifactVersionParams struct {
+	ArtifactID string      `json:"artifact_id"`
+	Version    int64       `json:"version"`
+	Title      string      `json:"title"`
+	Html       string      `json:"html"`
+	AuthorID   string      `json:"author_id"`
+	KeyName    pgtype.Text `json:"key_name"`
+}
+
+func (q *Queries) InsertArtifactVersion(ctx context.Context, arg InsertArtifactVersionParams) error {
+	_, err := q.db.Exec(ctx, insertArtifactVersion,
+		arg.ArtifactID,
+		arg.Version,
+		arg.Title,
+		arg.Html,
+		arg.AuthorID,
+		arg.KeyName,
+	)
+	return err
+}
+
 const insertCallEvent = `-- name: InsertCallEvent :exec
 INSERT INTO call_events(call_id,seq,ts,recv,kind,participant,data) VALUES($1,$2,$3,$4,$5,$6,$7)
 `
@@ -396,6 +566,120 @@ func (q *Queries) LatestTranscript(ctx context.Context, callID string) (LatestTr
 		&i.Data,
 	)
 	return i, err
+}
+
+const listArtifactVersions = `-- name: ListArtifactVersions :many
+SELECT v.version,v.title,octet_length(v.html)::bigint AS bytes,v.key_name,v.created_at,u.id AS author_id,u.name AS author_name
+FROM call_artifact_versions v JOIN call_artifacts a ON a.id=v.artifact_id JOIN users u ON u.id=v.author_id
+WHERE v.artifact_id=$1 AND a.call_id=$2 AND v.version<$3
+ORDER BY v.version DESC LIMIT $4
+`
+
+type ListArtifactVersionsParams struct {
+	ArtifactID string `json:"artifact_id"`
+	CallID     string `json:"call_id"`
+	Version    int64  `json:"version"`
+	Limit      int32  `json:"limit"`
+}
+
+type ListArtifactVersionsRow struct {
+	Version    int64              `json:"version"`
+	Title      string             `json:"title"`
+	Bytes      int64              `json:"bytes"`
+	KeyName    pgtype.Text        `json:"key_name"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	AuthorID   string             `json:"author_id"`
+	AuthorName string             `json:"author_name"`
+}
+
+func (q *Queries) ListArtifactVersions(ctx context.Context, arg ListArtifactVersionsParams) ([]ListArtifactVersionsRow, error) {
+	rows, err := q.db.Query(ctx, listArtifactVersions,
+		arg.ArtifactID,
+		arg.CallID,
+		arg.Version,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListArtifactVersionsRow
+	for rows.Next() {
+		var i ListArtifactVersionsRow
+		if err := rows.Scan(
+			&i.Version,
+			&i.Title,
+			&i.Bytes,
+			&i.KeyName,
+			&i.CreatedAt,
+			&i.AuthorID,
+			&i.AuthorName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCallArtifacts = `-- name: ListCallArtifacts :many
+SELECT a.id,a.call_id,a.version,a.created_at,cu.id AS created_by_id,cu.name AS created_by_name,
+       v.title,octet_length(v.html)::bigint AS bytes,v.key_name,v.created_at AS updated_at,uu.id AS updated_by_id,uu.name AS updated_by_name
+FROM call_artifacts a
+JOIN call_artifact_versions v ON v.artifact_id=a.id AND v.version=a.version
+JOIN users cu ON cu.id=a.created_by JOIN users uu ON uu.id=v.author_id
+WHERE a.call_id=$1 ORDER BY a.created_at,a.id
+`
+
+type ListCallArtifactsRow struct {
+	ID            string             `json:"id"`
+	CallID        string             `json:"call_id"`
+	Version       int64              `json:"version"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	CreatedByID   string             `json:"created_by_id"`
+	CreatedByName string             `json:"created_by_name"`
+	Title         string             `json:"title"`
+	Bytes         int64              `json:"bytes"`
+	KeyName       pgtype.Text        `json:"key_name"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	UpdatedByID   string             `json:"updated_by_id"`
+	UpdatedByName string             `json:"updated_by_name"`
+}
+
+func (q *Queries) ListCallArtifacts(ctx context.Context, callID string) ([]ListCallArtifactsRow, error) {
+	rows, err := q.db.Query(ctx, listCallArtifacts, callID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCallArtifactsRow
+	for rows.Next() {
+		var i ListCallArtifactsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CallID,
+			&i.Version,
+			&i.CreatedAt,
+			&i.CreatedByID,
+			&i.CreatedByName,
+			&i.Title,
+			&i.Bytes,
+			&i.KeyName,
+			&i.UpdatedAt,
+			&i.UpdatedByID,
+			&i.UpdatedByName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listCallEvents = `-- name: ListCallEvents :many
@@ -680,6 +964,17 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockCallStatus = `-- name: LockCallStatus :one
+SELECT status FROM calls WHERE id=$1 FOR UPDATE
+`
+
+func (q *Queries) LockCallStatus(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, lockCallStatus, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
 }
 
 const reserveEventSeq = `-- name: ReserveEventSeq :one

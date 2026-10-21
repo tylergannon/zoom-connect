@@ -34,6 +34,24 @@ type Call struct {
 	SupersededByUuid pgtype.Text        `json:"superseded_by_uuid"`
 }
 
+type CallArtifact struct {
+	ID        string             `json:"id"`
+	CallID    string             `json:"call_id"`
+	Version   int64              `json:"version"`
+	CreatedBy string             `json:"created_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type CallArtifactVersion struct {
+	ArtifactID string             `json:"artifact_id"`
+	Version    int64              `json:"version"`
+	Title      string             `json:"title"`
+	Html       string             `json:"html"`
+	AuthorID   string             `json:"author_id"`
+	KeyName    pgtype.Text        `json:"key_name"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
 type CallEvent struct {
 	CallID      string `json:"call_id"`
 	Seq         int64  `json:"seq"`
@@ -53,9 +71,10 @@ type CallParticipant struct {
 }
 
 type RtmsStream struct {
-	StreamID string      `json:"stream_id"`
-	CallID   pgtype.Text `json:"call_id"`
-	Status   string      `json:"status"`
+	StreamID      string             `json:"stream_id"`
+	CallID        pgtype.Text        `json:"call_id"`
+	Status        string             `json:"status"`
+	InterruptedAt pgtype.Timestamptz `json:"interrupted_at"`
 }
 
 type Session struct {
