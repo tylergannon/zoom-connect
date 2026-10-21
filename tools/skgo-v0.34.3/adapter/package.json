@@ -1,0 +1,58 @@
+{
+	"name": "@skgo/sveltekit-adapter",
+	"version": "0.0.0-dev",
+	"description": "SvelteKit adapter for skgo: builds a frontend that a Go binary renders and answers",
+	"keywords": [
+		"adapter",
+		"go",
+		"golang",
+		"skgo",
+		"svelte",
+		"sveltekit"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tylergannon/skgo.git",
+		"directory": "internal/adapter"
+	},
+	"license": "MIT",
+	"homepage": "https://github.com/tylergannon/skgo",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"import": "./skgo-adapter.js"
+		},
+		"./prerender": {
+			"types": "./skgo-adapter/prerender.d.ts",
+			"import": "./skgo-adapter/prerender.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"types": "index.d.ts",
+	"files": [
+		"index.d.ts",
+		"skgo-adapter.js",
+		"skgo-adapter/app-paths.js",
+		"skgo-adapter/app-server.js",
+		"skgo-adapter/compat/kit-3.0.0-queue.json",
+		"skgo-adapter/compat/kit-3.0.0-queue.patch",
+		"skgo-adapter/dev.js",
+		"skgo-adapter/dev-host.js",
+		"skgo-adapter/dev-modules.js",
+		"skgo-adapter/dev-bridge.js",
+		"skgo-adapter/dev-predicates.js",
+		"skgo-adapter/entry.js",
+		"skgo-adapter/env.js",
+		"skgo-adapter/generated.js",
+		"skgo-adapter/identity.js",
+		"skgo-adapter/polyfill.js",
+		"skgo-adapter/prerender-csp.js",
+		"skgo-adapter/prerender-modules.js",
+		"skgo-adapter/prerender.js",
+		"skgo-adapter/prerender.d.ts"
+	],
+	"peerDependencies": {
+		"@sveltejs/kit": "^3.0.0"
+	}
+}

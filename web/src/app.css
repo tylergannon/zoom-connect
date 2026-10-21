@@ -1,0 +1,223 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn-svelte/tailwind.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+/* shadcn-svelte design system, Vega style, Neutral theme. The focus ring is
+   darkened so it reaches 3:1 against the page, and live, success and
+   highlight are added for call status and search matches. */
+:root {
+	--radius: 0.625rem;
+	--background: oklch(1 0 0);
+	--foreground: oklch(0 0 0);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0 0 0);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0 0 0);
+	--primary: oklch(0 0 0);
+	--primary-foreground: oklch(0.985 0 0);
+	--secondary: oklch(0.97 0 0);
+	--secondary-foreground: oklch(0.205 0 0);
+	--muted: oklch(0.97 0 0);
+	--muted-foreground: oklch(0.556 0 0);
+	--accent: oklch(0.97 0 0);
+	--accent-foreground: oklch(0.205 0 0);
+	--destructive: oklch(0.577 0.245 27.325);
+	--destructive-foreground: oklch(0.97 0.01 17);
+	--border: oklch(0.922 0 0);
+	--input: oklch(0.922 0 0);
+	--ring: oklch(0.556 0 0);
+	--sidebar: oklch(0.985 0 0);
+	--sidebar-foreground: oklch(0 0 0);
+	--sidebar-primary: oklch(0.205 0 0);
+	--sidebar-primary-foreground: oklch(0.985 0 0);
+	--sidebar-accent: oklch(0.97 0 0);
+	--sidebar-accent-foreground: oklch(0.205 0 0);
+	--sidebar-border: oklch(0.922 0 0);
+	--sidebar-ring: oklch(0.556 0 0);
+	--surface: oklch(0.98 0 0);
+	--surface-foreground: var(--foreground);
+	--selection: oklch(0 0 0);
+	--selection-foreground: oklch(1 0 0);
+	--live: oklch(0.505 0.213 27.518);
+	--live-foreground: oklch(0.985 0 0);
+	--live-muted: oklch(0.971 0.013 17.38);
+	--success: oklch(0.527 0.154 150.069);
+	--success-foreground: oklch(0.985 0 0);
+	--highlight: oklch(0.905 0.182 98.111);
+	--highlight-foreground: oklch(0.145 0 0);
+	--transcript-size: 1rem;
+	color-scheme: light;
+}
+
+.dark {
+	--background: oklch(0.145 0 0);
+	--foreground: oklch(0.985 0 0);
+	--card: oklch(0.205 0 0);
+	--card-foreground: oklch(0.985 0 0);
+	--popover: oklch(0.205 0 0);
+	--popover-foreground: oklch(0.985 0 0);
+	--primary: oklch(0.922 0 0);
+	--primary-foreground: oklch(0.205 0 0);
+	--secondary: oklch(0.269 0 0);
+	--secondary-foreground: oklch(0.985 0 0);
+	--muted: oklch(0.269 0 0);
+	--muted-foreground: oklch(0.708 0 0);
+	--accent: oklch(0.371 0 0);
+	--accent-foreground: oklch(0.985 0 0);
+	--destructive: oklch(0.704 0.191 22.216);
+	--destructive-foreground: oklch(0.58 0.22 27);
+	--border: oklch(1 0 0 / 10%);
+	--input: oklch(1 0 0 / 15%);
+	--ring: oklch(0.708 0 0);
+	--sidebar: oklch(0.205 0 0);
+	--sidebar-foreground: oklch(0.985 0 0);
+	--sidebar-primary: oklch(0.488 0.243 264.376);
+	--sidebar-primary-foreground: oklch(0.985 0 0);
+	--sidebar-accent: oklch(0.269 0 0);
+	--sidebar-accent-foreground: oklch(0.985 0 0);
+	--sidebar-border: oklch(1 0 0 / 10%);
+	--sidebar-ring: oklch(0.708 0 0);
+	--surface: oklch(0.2 0 0);
+	--surface-foreground: oklch(0.708 0 0);
+	--selection: oklch(0.922 0 0);
+	--selection-foreground: oklch(0.205 0 0);
+	--live: oklch(0.704 0.191 22.216);
+	--live-foreground: oklch(0.145 0 0);
+	--live-muted: oklch(0.258 0.092 26.042);
+	--success: oklch(0.792 0.209 151.711);
+	--success-foreground: oklch(0.145 0 0);
+	--highlight: oklch(0.554 0.135 66.442);
+	--highlight-foreground: oklch(0.985 0 0);
+	color-scheme: dark;
+}
+
+:root[data-transcript-size="large"] {
+	--transcript-size: 1.125rem;
+}
+:root[data-transcript-size="larger"] {
+	--transcript-size: 1.3125rem;
+}
+
+@theme inline {
+	--font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+	--font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-sidebar: var(--sidebar);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-ring: var(--sidebar-ring);
+	--color-surface: var(--surface);
+	--color-surface-foreground: var(--surface-foreground);
+	--color-live: var(--live);
+	--color-live-foreground: var(--live-foreground);
+	--color-live-muted: var(--live-muted);
+	--color-success: var(--success);
+	--color-success-foreground: var(--success-foreground);
+	--color-highlight: var(--highlight);
+	--color-highlight-foreground: var(--highlight-foreground);
+	--text-transcript: var(--transcript-size);
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+	html {
+		-webkit-text-size-adjust: 100%;
+		scroll-padding-top: 4rem;
+	}
+	body {
+		@apply bg-background font-sans text-foreground antialiased;
+	}
+	/* A call page being presented covers the window; the page behind stays put. */
+	body.artifact-presenting {
+		overflow: hidden;
+	}
+	::selection {
+		background: var(--selection);
+		color: var(--selection-foreground);
+	}
+	mark {
+		background: var(--highlight);
+		color: var(--highlight-foreground);
+		border-radius: 2px;
+		padding: 0 1px;
+	}
+	mark[data-current] {
+		outline: 2px solid var(--foreground);
+		outline-offset: 1px;
+	}
+}
+
+/* A visible 2px focus outline on every control. Unlayered, so it wins over
+   the components' outline-none; their soft ring still shows beneath it. */
+:where(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: 2px;
+}
+:where([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]):focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: -2px;
+}
+[data-slot="input-group-control"]:focus-visible {
+	outline: none;
+}
+[data-slot="input-group"]:has([data-slot="input-group-control"]:focus-visible) {
+	outline: 2px solid var(--ring);
+	outline-offset: 2px;
+}
+main:focus {
+	outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	::before,
+	::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
+
+@media (forced-colors: active) {
+	[data-slot="badge"] {
+		border: 1px solid CanvasText;
+	}
+	mark {
+		forced-color-adjust: none;
+		background: Mark;
+		color: MarkText;
+	}
+}
