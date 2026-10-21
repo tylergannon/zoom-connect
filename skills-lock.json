@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "skgo": {
+      "source": "tylergannon/skgo",
+      "sourceType": "github",
+      "skillPath": "skills/skgo/SKILL.md",
+      "computedHash": "3d0a41d0fa393d60761ffb7d34fa66ff8717f007c7b3f730fa6ccea78b0e9e0f"
+    }
+  }
+}
