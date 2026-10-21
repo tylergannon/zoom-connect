@@ -1,0 +1,15 @@
+{
+  "remotes": [],
+  "loads": [],
+  "actions": [],
+  "endpoints": {},
+  "prerender": {
+    "root": "..",
+    "package": "./internal/skgo/prerender"
+  },
+  "build": {
+    "src/hooks.server.ts": {
+      "hook": true
+    }
+  }
+}
