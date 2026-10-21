@@ -87,8 +87,8 @@ data: {"seq":42,"participant":{"name":"Priya Shah"},"data":{"text":"Let’s ship
 	];
 
 	const pageErrors = [
-		['400', 'Bad JSON, an unknown field, an empty or over-long title, or a missing base_version'],
-		['403', 'The key’s owner wasn’t on the call. People it was shared with can read pages but not publish them'],
+		['400', 'Bad JSON, an unknown field, no title when publishing, a title that isn’t plain text of at most 120 characters, or a missing base_version on an update'],
+		['403', 'The key’s owner can’t publish here. Publishing needs a participant, or the call’s owner if they can already see the call. People who only had the call shared with them can read pages but not publish'],
 		['409', 'Someone else updated the page first, the call has ended, or it already has 10 pages'],
 		['413', 'The HTML is over 256 KiB']
 	];
@@ -194,7 +194,7 @@ data: {"seq":42,"participant":{"name":"Priya Shah"},"data":{"text":"Let’s ship
 				{@render example(examplePage, 'Example reply')}
 				<h3 class="mt-2 text-base font-semibold">Update it</h3>
 				<p class="max-w-prose">
-					Send the version you’re replacing as <code class="rounded bg-muted px-1 font-mono text-sm">base_version</code>. The page keeps its ID and link, and every version is kept. If another update got there first, nothing is saved; read the page again and retry.
+					Send the version you’re replacing as <code class="rounded bg-muted px-1 font-mono text-sm">base_version</code>. The page keeps its ID and link, and every version is kept. A title is optional here: leave it out, or send it empty, to keep the current one. If another update got there first, nothing is saved; read the page again and retry.
 				</p>
 				{@render code(updatePage, 'update page command')}
 				{@render example(exampleConflict, 'If someone else updated it first')}

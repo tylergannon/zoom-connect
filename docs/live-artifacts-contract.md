@@ -28,9 +28,19 @@ scope, public link or bearer URL exists. Revoked keys and expired sessions get
 | Caller | List / read / stream / old versions | Create / update |
 | --- | --- | --- |
 | Call participant (and their keys) | yes | yes, while the call is scheduled or live |
-| Coworker the call was shared with (and their keys) | yes | no (403) |
+| Call owner who can already read the call (and their keys) | yes | yes, while the call is scheduled or live |
+| Coworker the call was shared with who is neither its owner nor a participant (and their keys) | yes | no (403) |
 | Anyone else | 403 | 403 |
 | Unknown call, or artifact id under another call | 404 | 404 |
+
+Writing uses the same rule as sharing a call. The caller must first have read
+access, which comes only from being a participant or from a share. Then the
+caller must be either a participant, or the call's owner (`host_user_id`)
+with that read access. An admin who registers a scheduled call gets an
+explicit share as the capture owner, so they can read it, and as its owner
+they can publish. Being recorded as a call's owner or host never grants read
+access by itself: an owner with no participant identity and no share gets 403
+like anyone else.
 
 After a call ends (stopped, cancelled or interrupted) its artifacts are
 read-only: updates return 409 and reads keep working for everyone with access.
@@ -79,10 +89,14 @@ under another call. There is no restore or delete endpoint.
 **Optimistic concurrency.** `PUT` must name the version it replaces. If another
 write got there first, nothing is stored and the response is
 `409 {"error":"version conflict","current_version":N,"base_version":B}`. The
-writer re-reads and retries. Leaving out `title` keeps the current title.
+writer re-reads and retries.
 
 **Bounds.** `html` at most 256 KiB (413). Request body at most 1 MiB (413).
-`title` is 1–120 characters with no control characters (400). NUL bytes,
+`title` is trimmed of surrounding whitespace. A nonempty title must be at most
+120 characters with no control characters (400). On create, a missing, empty
+or whitespace-only title is rejected (400 `title is required`). On update,
+`title` is optional: leaving it out, or sending it empty or whitespace-only,
+keeps the current title. NUL bytes,
 unknown JSON fields, a missing `html` and a missing or non-positive
 `base_version` are rejected (400). At most 10 artifacts per call (409). The
 database repeats the size and title bounds as constraints. The number of
@@ -100,9 +114,14 @@ a log. Access (key or session still valid, and still a participant or share
 recipient) is rechecked before every snapshot after the first: once access is
 gone, the stream closes instead of sending a newer version. An idle stream
 also rechecks access every 3 seconds, so it closes within about 3 seconds of
-revocation even if nothing changes. The stored version is rechecked on that
-same 3-second tick: a server that missed an in-process wake-up, or runs as a
-separate instance, still delivers within that interval.
+revocation even if nothing changes. A write wakes that server's open streams
+in process. The stored version is also rechecked on the same 3-second tick,
+so a stream that missed its wake-up still gets the latest version within that
+interval.
+
+**Deployment scope.** Only a single app server is supported. The stored-version
+recheck recovers missed in-process wake-ups; it does not add support for
+running several app servers. Concurrency across instances is out of scope.
 
 **Rendering rule.** The HTML is untrusted. The API only returns it as a JSON
 string, with `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
@@ -119,7 +138,8 @@ page's privileges stay blocked.
 
 ## Relationship to the spec
 
-- **Reused:** API keys and sessions (`auth`), the participant-or-share call ACL,
+- **Reused:** API keys and sessions (`auth`), the participant-or-share call ACL
+  for reads, the share rule (owner with read access, or participant) for writes,
   the SSE conventions of `/api/calls/{id}/stream`, and Postgres via
   migrations and sqlc (`store`).
 - **Added:** migration `004_call_artifacts.sql` and the endpoints above (`api`),

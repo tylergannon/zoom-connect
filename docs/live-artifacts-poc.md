@@ -27,11 +27,13 @@ October 20 amendment in `nlspec.md` states its intent.
 - **Live delivery:** the viewer loads the latest snapshot, then follows
   `…/stream`, an SSE stream of whole snapshots whose event id is the version.
   The browser resumes with `Last-Event-ID`. A reconnect therefore gets the
-  newest version even if it missed several. Writes wake viewers on the same
-  instance at once. A stream rechecks access before every snapshot after the
-  first, so a revoked key or share never receives a newer version. It also
-  rechecks access and the stored version every 3 seconds, which covers other
-  instances and closes idle streams whose access was revoked.
+  newest version even if it missed several. A write wakes the server's open
+  streams in process at once. A stream rechecks access before every snapshot
+  after the first, so a revoked key or share never receives a newer version.
+  Every 3 seconds it also rechecks access and the stored version. That
+  recovers a missed in-process wake-up and closes idle streams whose access
+  was revoked. Only the single-server deployment is supported; see the
+  limitations.
 - **Isolation:** agent HTML is untrusted. It is only ever returned as a JSON
   string and is shown in `<iframe sandbox="" srcdoc>`, which gives it an opaque
   origin with no scripts, forms, popups or navigation of the app. A CSP meta
@@ -287,15 +289,17 @@ call the real HTTP handlers against real Postgres, with `-race`:
   - `Last-Event-ID: 2` after v3 and v4 first gets v4; `?from=4` gets no
     duplicate and then v5.
   - Removing the share closes the stream; revoking the key closes its stream.
-  - A second server instance on the same database delivers a write made
-    through the first (by polling).
+  - A write made through a second test server on the same database sends no
+    wake-up to this stream, so it stands in for a missed wake-up. The stored
+    version recheck still delivers it. This fixture only exercises the
+    recheck; running several servers is not a supported deployment.
   - Stopping the call sends `event: end`.
 - `TestArtifactHistoryPagesAccessAndRestart`
   - 60 versions list newest first in pages of 50 (`next_before` 11, then
     `null`); `before`/`limit` page exactly; bad values get 400.
   - Entries carry title, bytes, author and key name, and no `html`.
   - 401 anonymous, 403 outsider (200 once shared), 404 under another call.
-  - After a server restart a new instance returns the latest v60, all 60
+  - After a server restart the new server process returns the latest v60, all 60
     history entries and version 1's HTML.
 - `TestArtifactStreamRechecksAccessBeforeWakeSnapshot`
   - The access tick is an hour, so only the check at wake-up can act. A key
@@ -304,8 +308,10 @@ call the real HTTP handlers against real Postgres, with `-race`:
   - Before the fix, both subtests received v2 and failed.
 
 **Headless browser proof** (`scripts/artifact-browser-proof.mjs`) uses
-Playwright against the built binary. It runs two instances on one database,
-an agent that only holds a Bearer key, a loopback reverse proxy that can fail
+Playwright against the built binary. It runs two server processes on one
+database, so the agent can keep writing while the viewer's server is down.
+That is a test fixture, not a supported multi-server deployment. It also
+runs an agent that only holds a Bearer key, a loopback reverse proxy that can fail
 stream requests, and a loopback beacon server that records any request it
 receives. The final run passed 24 of 24 checks in each of Chromium, Firefox
 and WebKit:
@@ -314,8 +320,8 @@ and WebKit:
   iframe 10–24 ms after each PUT returned. There were zero main-frame
   navigations, and a `window` marker set after load was still present.
 - **Reconnect gets the latest.** The viewer's server was killed and the stream
-  showed "Reconnecting…". The agent wrote v4 and v5 through the other
-  instance. After the server restarted, v5 appeared 3.3 s later in Chromium and
+  showed "Reconnecting…". The agent wrote v4 and v5 through the second test
+  server. After the viewer's server restarted, v5 appeared 3.3 s later in Chromium and
   WebKit and 5.4 s later in Firefox, set by each browser's EventSource retry
   delay. v6 then arrived live, still with no reload.
 - **Proxy errors.** A viewer behind the proxy had its stream dropped. Every
@@ -501,11 +507,15 @@ only at a scratch database.
   tab on the same host is the practical limit; with more, requests stall. The
   proofs close finished pages for this reason. HTTP/2 should remove that
   limit; this was not tested, and the app's transport was not changed.
-- **Delivery timing.** Wake-ups are in-process. Other instances, and a viewer
-  whose wake-up was missed, rely on the 3-second poll. Delivery across instances
-  was proven against one shared database, not on Fly. A stream whose access was
-  revoked closes at its next update, or within about 3 seconds if idle; the
-  viewer then rechecks and clears the page.
+- **One server only.** Only the single-server deployment is supported.
+  Wake-ups are in process. If a stream misses one, the 3-second stored-version
+  recheck delivers the update instead. That recheck recovers missed wake-ups;
+  it is not support for several app servers. The local tests that use a second
+  server process on the same database are fixtures for the recheck.
+  Concurrency across instances is out of scope.
+- **Delivery timing.** A stream whose access was revoked closes at its next
+  update, or within about 3 seconds if idle; the viewer then rechecks and
+  clears the page.
 - **Missing operations.** There is no delete, restore or rename-only endpoint
   (every update must include `html`) and no per-key rate limit.
 - **Storage grows with updates.** All versions are kept, so a call's pages

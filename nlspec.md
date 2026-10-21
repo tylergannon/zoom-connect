@@ -16,10 +16,14 @@ A page belongs to one call and keeps one stable ID and viewer URL for its
 lifetime. Each create or update stores an immutable version; every version is
 kept, and history is listed newest first in bounded pages with a cursor.
 Writes name the version they replace and fail without storing anything if
-another write got there first. Only participants and their API keys may
-write, and only while the call is scheduled or live; people the call is
-shared with may read. The existing sessions, API keys and participant-or-share
-ACL apply at every route, including the page stream, which rechecks access
+another write got there first. Writing follows the existing share rule and is
+allowed only while the call is scheduled or live. The writer, or the owner of
+the API key used, must already be able to read the call, and must be a
+participant or the call's owner. An admin who registers a call is granted a
+capture-owner share, so the owner can read the call that way. Being recorded
+as a call's owner or host never grants read access by itself. People who can
+read only through a share may not write. The existing sessions, API keys and
+participant-or-share read ACL apply at every route, including the page stream, which rechecks access
 before each delivery and while idle so revocation closes it within seconds.
 No new credential, scope or public link exists.
 
